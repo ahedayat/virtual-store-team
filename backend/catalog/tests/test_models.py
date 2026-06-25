@@ -1,9 +1,24 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 
-from catalog.models import Category, InventoryLevel, Order, OrderItem, OrderStatus, Product
+from catalog.models import (
+    Category,
+    Customer,
+    InventoryLevel,
+    Message,
+    MessageDirection,
+    MessageThread,
+    Order,
+    OrderItem,
+    OrderStatus,
+    Platform,
+    Product,
+    SenderType,
+    ThreadStatus,
+)
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -344,3 +359,171 @@ class InventoryLevelModelTests(TestCase):
                 quantity_on_hand=5,
                 low_stock_threshold=3,
             )
+
+
+class CustomerModelTests(TestCase):
+    def setUp(self):
+        self.tenant_a = Tenant.objects.create(slug="tenant-a", name="Tenant A")
+        self.tenant_b = Tenant.objects.create(slug="tenant-b", name="Tenant B")
+        self.store_a = Store.objects.create(
+            tenant=self.tenant_a,
+            name="Store A",
+            slug="store-a",
+            currency="USD",
+        )
+        self.store_b = Store.objects.create(
+            tenant=self.tenant_b,
+            name="Store B",
+            slug="store-b",
+            currency="EUR",
+        )
+
+    def test_create_customer_for_tenant_store(self):
+        customer = Customer.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            display_name="Sara Jamali",
+            email="sara@example.com",
+            phone="09121234567",
+            platform=Platform.INSTAGRAM,
+            platform_user_id="ig-001",
+        )
+
+        self.assertEqual(customer.tenant_id, self.tenant_a.id)
+        self.assertEqual(customer.store_id, self.store_a.id)
+        self.assertEqual(customer.platform, Platform.INSTAGRAM)
+
+
+class MessageThreadModelTests(TestCase):
+    def setUp(self):
+        self.tenant_a = Tenant.objects.create(slug="tenant-a", name="Tenant A")
+        self.store_a = Store.objects.create(
+            tenant=self.tenant_a,
+            name="Store A",
+            slug="store-a",
+            currency="USD",
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            display_name="Sara Jamali",
+            platform=Platform.INSTAGRAM,
+            platform_user_id="ig-001",
+        )
+
+    def test_create_message_thread_for_tenant_store(self):
+        thread = MessageThread.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            customer=self.customer,
+            platform=Platform.INSTAGRAM,
+            external_thread_id="thread-001",
+            subject="Availability question",
+            status=ThreadStatus.OPEN,
+        )
+
+        self.assertEqual(thread.tenant_id, self.tenant_a.id)
+        self.assertEqual(thread.store_id, self.store_a.id)
+        self.assertEqual(thread.customer_id, self.customer.id)
+
+
+class MessageModelTests(TestCase):
+    def setUp(self):
+        self.tenant_a = Tenant.objects.create(slug="tenant-a", name="Tenant A")
+        self.store_a = Store.objects.create(
+            tenant=self.tenant_a,
+            name="Store A",
+            slug="store-a",
+            currency="USD",
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            display_name="Sara Jamali",
+            platform=Platform.INSTAGRAM,
+            platform_user_id="ig-001",
+        )
+        self.thread = MessageThread.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            customer=self.customer,
+            platform=Platform.INSTAGRAM,
+            external_thread_id="thread-001",
+            subject="Availability question",
+        )
+
+    def test_create_message_for_tenant_store_thread(self):
+        message = Message.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            thread=self.thread,
+            direction=MessageDirection.INBOUND,
+            sender_type=SenderType.CUSTOMER,
+            body="Is this bag available?",
+            external_message_id="msg-001",
+        )
+
+        self.assertEqual(message.tenant_id, self.tenant_a.id)
+        self.assertEqual(message.store_id, self.store_a.id)
+        self.assertEqual(message.thread_id, self.thread.id)
+
+    def test_message_rejects_cross_store_thread(self):
+        other_store = Store.objects.create(
+            tenant=self.tenant_a,
+            name="Store A2",
+            slug="store-a2",
+            currency="USD",
+        )
+        other_customer = Customer.objects.create(
+            tenant=self.tenant_a,
+            store=other_store,
+            display_name="Other Customer",
+            platform=Platform.INSTAGRAM,
+            platform_user_id="ig-002",
+        )
+        other_thread = MessageThread.objects.create(
+            tenant=self.tenant_a,
+            store=other_store,
+            customer=other_customer,
+            platform=Platform.INSTAGRAM,
+            external_thread_id="thread-002",
+        )
+
+        message = Message(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            thread=other_thread,
+            direction=MessageDirection.INBOUND,
+            sender_type=SenderType.CUSTOMER,
+            body="Mismatch",
+            external_message_id="msg-002",
+        )
+
+        with self.assertRaises(ValidationError):
+            message.full_clean()
+
+    def test_message_thread_rejects_cross_store_customer(self):
+        other_store = Store.objects.create(
+            tenant=self.tenant_a,
+            name="Store A2",
+            slug="store-a2",
+            currency="USD",
+        )
+        other_customer = Customer.objects.create(
+            tenant=self.tenant_a,
+            store=other_store,
+            display_name="Other Customer",
+            platform=Platform.INSTAGRAM,
+            platform_user_id="ig-002",
+        )
+
+        thread = MessageThread(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            customer=other_customer,
+            platform=Platform.INSTAGRAM,
+            external_thread_id="thread-mismatch",
+        )
+
+        with self.assertRaises(ValidationError):
+            thread.full_clean()

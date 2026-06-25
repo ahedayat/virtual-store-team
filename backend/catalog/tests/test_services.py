@@ -4,8 +4,27 @@ from zoneinfo import ZoneInfo
 
 from django.test import TestCase
 
-from catalog.models import Category, InventoryLevel, Order, OrderItem, OrderStatus, Product
-from catalog.services import build_low_stock_summary, build_sales_summary, get_period_bounds
+from catalog.models import (
+    Category,
+    Customer,
+    InventoryLevel,
+    Message,
+    MessageDirection,
+    MessageThread,
+    Order,
+    OrderItem,
+    OrderStatus,
+    Platform,
+    Product,
+    SenderType,
+    ThreadStatus,
+)
+from catalog.services import (
+    build_low_stock_summary,
+    build_recent_messages_summary,
+    build_sales_summary,
+    get_period_bounds,
+)
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -310,3 +329,90 @@ class LowStockInventoryTests(TestCase):
         summary = build_low_stock_summary(self.store)
 
         self.assertEqual(summary["low_stock_count"], 0)
+
+
+class RecentMessagesSummaryTests(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(slug="tenant-a", name="Tenant A")
+        self.store = Store.objects.create(
+            tenant=self.tenant,
+            name="Store A",
+            slug="store-a",
+            currency="USD",
+            timezone="America/New_York",
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            display_name="Sara Jamali",
+            email="sara@example.com",
+            phone="09121234567",
+            platform=Platform.INSTAGRAM,
+            platform_user_id="ig-001",
+        )
+
+    def _create_thread_with_message(self, *, external_thread_id, subject, sent_at, body):
+        thread = MessageThread.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            customer=self.customer,
+            platform=Platform.INSTAGRAM,
+            external_thread_id=external_thread_id,
+            subject=subject,
+            last_message_at=sent_at,
+        )
+        Message.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            thread=thread,
+            direction=MessageDirection.INBOUND,
+            sender_type=SenderType.CUSTOMER,
+            body=body,
+            external_message_id=f"msg-{external_thread_id}",
+            sent_at=sent_at,
+        )
+        return thread
+
+    def test_recent_messages_ordered_by_last_message_at(self):
+        older = datetime(2026, 6, 20, 10, 0, tzinfo=ZoneInfo("UTC"))
+        newer = datetime(2026, 6, 25, 15, 0, tzinfo=ZoneInfo("UTC"))
+
+        self._create_thread_with_message(
+            external_thread_id="thread-old",
+            subject="Older thread",
+            sent_at=older,
+            body="Old question",
+        )
+        self._create_thread_with_message(
+            external_thread_id="thread-new",
+            subject="Newer thread",
+            sent_at=newer,
+            body="New question",
+        )
+
+        summary = build_recent_messages_summary(self.store, thread_limit=10)
+        thread_ids = [thread["thread_id"] for thread in summary["threads"]]
+
+        self.assertEqual(len(thread_ids), 2)
+        self.assertEqual(summary["threads"][0]["subject"], "Newer thread")
+        self.assertEqual(summary["threads"][1]["subject"], "Older thread")
+
+    def test_recent_messages_sanitize_body_and_exclude_raw_pii_fields(self):
+        sent_at = datetime(2026, 6, 25, 12, 0, tzinfo=ZoneInfo("UTC"))
+        self._create_thread_with_message(
+            external_thread_id="thread-pii",
+            subject="Contact request",
+            sent_at=sent_at,
+            body="Email me at sara@example.com or call 09121234567",
+        )
+
+        summary = build_recent_messages_summary(self.store)
+        thread = summary["threads"][0]
+        body = thread["messages"][0]["body"]
+
+        self.assertEqual(thread["customer_ref"], f"customer-{self.customer.id}")
+        self.assertNotIn("sara@example.com", body)
+        self.assertNotIn("09121234567", body)
+        self.assertNotIn("display_name", thread)
+        self.assertNotIn("email", thread)
+        self.assertNotIn("phone", thread)

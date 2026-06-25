@@ -1,0 +1,191 @@
+---
+description: Rules for Step 3.4 - Message ingest models, admin/JSON import, and sanitized recent messages API
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-3.4.md"
+alwaysApply: false
+---
+
+# Step 3.4 Rules — Message Ingest Model
+
+This rule applies only to Step 3.4 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement Phase 3.4 only:
+
+- Generic tenant/store-scoped customer/message support data model
+- MessageThread and Message models for MVP support conversations
+- Manual admin entry for message threads and messages
+- Optional JSON import management command for seeded/demo messages
+- Prestia demo support message data
+- Minimal PII sanitizer required for AI-facing message output
+- Internal AI recent messages endpoint returning sanitized threads
+- Tests for tenant/store scoping, message ingestion, sanitizer behavior, and internal API security
+- Documentation at `docs/phases/step-3.4.md`
+
+Do not implement the full AI context endpoint, report models, action models, Celery orchestration, support-agent logic, real Instagram webhook integration, real Instagram send/publish behavior, or advanced CRM workflows in this step.
+
+## Architecture Rules
+
+- Django + Postgres remain the source of truth.
+- AI services must access message data only through Django internal APIs.
+- All customer, thread, and message data must be tenant-scoped and store-scoped.
+- Reuse existing tenant/store abstractions, base models, internal AI authentication, serializers, URL conventions, admin conventions, seed command structure, and test patterns.
+- Do not introduce Prestia-specific application logic.
+- Prestia messages must be normal seed/demo data only.
+
+## Data Modeling Rules
+
+Use generic support/conversation models.
+
+Suggested models:
+
+- Customer
+- MessageThread
+- Message
+
+Customer may store PII because Django/Postgres is the source of truth, but raw PII must not be exported to AI-facing APIs.
+
+Suggested Customer fields:
+
+- id
+- tenant
+- store
+- display_name
+- email
+- phone
+- external_ref or platform_user_id
+- platform
+- metadata
+- created_at / updated_at
+
+Suggested MessageThread fields:
+
+- id
+- tenant
+- store
+- customer
+- platform
+- external_thread_id
+- subject
+- status
+- last_message_at
+- metadata
+- created_at / updated_at
+
+Suggested Message fields:
+
+- id
+- tenant
+- store
+- thread
+- direction: inbound/outbound
+- sender_type: customer/staff/system
+- body
+- external_message_id
+- sent_at
+- metadata
+- created_at / updated_at
+
+Rules:
+
+- Enforce tenant/store consistency between Customer, MessageThread, and Message.
+- Use explicit status/direction choices.
+- Use indexes for tenant/store/platform/status/last_message_at and thread/sent_at.
+- Avoid storing agent outputs, reply drafts, action approvals, or support classifications in these models. Those belong to later phases.
+- Avoid real Instagram integration logic in this step.
+
+## PII and Sanitization Rules
+
+- Add or extend a `PiiSanitizer` module if it does not already exist.
+- The sanitizer must redact at least:
+  - email addresses
+  - Iranian and international phone-like patterns
+  - obvious URLs with tokens/query strings if practical
+- AI-facing message output must never include raw:
+  - email
+  - phone
+  - physical address
+  - customer full identity fields
+  - raw platform user ID if avoidable
+- Use stable safe references such as `customer_ref` or `Customer #<id>`.
+- Keep raw PII only in database/admin, not in internal AI API responses.
+- Do not log full message bodies at INFO level.
+
+## Internal API Rules
+
+Add an internal AI endpoint similar to:
+
+- `GET /internal/ai/stores/<store_id>/messages/recent/`
+
+The endpoint must:
+
+- Require existing internal AI/service JWT authentication.
+- Validate that the service JWT tenant_id and store_id match the requested store.
+- Reject cross-tenant or cross-store access.
+- Return 401 for missing/invalid service JWT.
+- Return sanitized recent message threads only.
+- Support a small limit parameter if consistent with project conventions.
+- Default to recent threads ordered by last activity.
+- Return a stable JSON shape suitable for future support-agent consumption.
+
+Do not implement `/internal/ai/context/{report_run_id}/` in this step.
+
+## Seed and Import Rules
+
+- Extend the existing `seed_prestia` command with demo customers, message threads, and messages.
+- The seed data should include realistic support conversations for an online bag store.
+- Include messages with phone/email-like text so sanitizer tests can verify redaction.
+- The seed command must be idempotent.
+- Optionally add a JSON import command if it is small and useful for MVP.
+- Running seed/import multiple times must not duplicate threads or messages.
+
+## Admin Rules
+
+- Register Customer, MessageThread, and Message in Django admin.
+- Provide useful list_display, list_filter, search_fields, ordering, and readonly_fields.
+- MessageThread admin may include Message inline if consistent with project conventions.
+- Admin can show raw PII because it is an internal management surface, but do not add AI-facing exports that expose raw PII.
+
+## Testing Rules
+
+Add focused tests for:
+
+- Customer creation under tenant/store scope
+- MessageThread creation under tenant/store scope
+- Message creation under tenant/store scope
+- Tenant/store consistency validation between customer, thread, and message
+- Recent messages query ordering
+- PiiSanitizer redacts email patterns
+- PiiSanitizer redacts Persian/Iranian and international phone patterns
+- Internal recent messages endpoint requires service JWT
+- Internal recent messages endpoint accepts a valid service JWT
+- Internal recent messages endpoint rejects cross-tenant or cross-store access
+- Internal recent messages response does not contain raw email or phone values
+- `seed_prestia` creates demo customers, threads, and messages idempotently
+
+## Documentation Rules
+
+Create `docs/phases/step-3.4.md` and include:
+
+- Step title and goal
+- Summary of implemented changes
+- Files created/modified
+- Customer, MessageThread, and Message model design
+- Message ingest approach: admin entry and optional JSON import
+- PII sanitizer behavior
+- Internal AI recent messages endpoint contract
+- Example sanitized response shape
+- Tenant/store scoping decisions
+- Prestia message seed behavior
+- Tests added
+- How to run the seed/import command
+- How to run relevant tests
+- Explicit out-of-scope items deferred to later steps:
+  - full AI context endpoint
+  - report/action models
+  - Celery orchestration
+  - support-agent implementation
+  - real Instagram webhook integration
+  - real Instagram send/reply behavior

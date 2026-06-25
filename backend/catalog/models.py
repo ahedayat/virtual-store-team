@@ -299,3 +299,203 @@ class InventoryLevel(TenantScopedModel):
 
     def __str__(self):
         return f"{self.product.sku} ({self.available_quantity} available)"
+
+
+class Platform(models.TextChoices):
+    INSTAGRAM = "instagram", "Instagram"
+    WHATSAPP = "whatsapp", "WhatsApp"
+    EMAIL = "email", "Email"
+    WEB = "web", "Web"
+    MANUAL = "manual", "Manual"
+
+
+class ThreadStatus(models.TextChoices):
+    OPEN = "open", "Open"
+    PENDING = "pending", "Pending"
+    CLOSED = "closed", "Closed"
+
+
+class MessageDirection(models.TextChoices):
+    INBOUND = "inbound", "Inbound"
+    OUTBOUND = "outbound", "Outbound"
+
+
+class SenderType(models.TextChoices):
+    CUSTOMER = "customer", "Customer"
+    STAFF = "staff", "Staff"
+    SYSTEM = "system", "System"
+
+
+class Customer(TenantScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.PROTECT,
+        related_name="customers",
+    )
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="customers",
+    )
+    display_name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=31, blank=True)
+    platform_user_id = models.CharField(max_length=127, blank=True)
+    platform = models.CharField(max_length=20, choices=Platform.choices, default=Platform.MANUAL)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["display_name", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "store", "platform", "platform_user_id"],
+                condition=models.Q(platform_user_id__gt=""),
+                name="catalog_customer_unique_platform_user",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["tenant", "store", "platform"],
+                name="cat_cust_tnt_store_platform",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.store_id and self.tenant_id and self.store.tenant_id != self.tenant_id:
+            raise ValidationError({"store": "Store must belong to the same tenant."})
+
+    def __str__(self):
+        label = self.display_name or self.platform_user_id or str(self.id)
+        return f"{label} ({self.store.name})"
+
+
+class MessageThread(TenantScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.PROTECT,
+        related_name="message_threads",
+    )
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="message_threads",
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.PROTECT,
+        related_name="threads",
+    )
+    platform = models.CharField(max_length=20, choices=Platform.choices, default=Platform.MANUAL)
+    external_thread_id = models.CharField(max_length=127, blank=True)
+    subject = models.CharField(max_length=255, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=ThreadStatus.choices,
+        default=ThreadStatus.OPEN,
+    )
+    last_message_at = models.DateTimeField(default=timezone.now)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_message_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "store", "external_thread_id"],
+                condition=models.Q(external_thread_id__gt=""),
+                name="catalog_thread_unique_external_id",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["tenant", "store", "platform", "status"],
+                name="cat_thread_tnt_store_plat_stat",
+            ),
+            models.Index(
+                fields=["tenant", "store", "last_message_at"],
+                name="cat_thread_tnt_store_last_msg",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.store_id and self.tenant_id and self.store.tenant_id != self.tenant_id:
+            raise ValidationError({"store": "Store must belong to the same tenant."})
+        if self.customer_id and self.store_id and self.customer.store_id != self.store_id:
+            raise ValidationError({"customer": "Customer must belong to the same store."})
+        if self.customer_id and self.tenant_id and self.customer.tenant_id != self.tenant_id:
+            raise ValidationError({"customer": "Customer must belong to the same tenant."})
+
+    def __str__(self):
+        label = self.subject or self.external_thread_id or str(self.id)
+        return f"{label} ({self.store.name})"
+
+
+class Message(TenantScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.PROTECT,
+        related_name="messages",
+    )
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="messages",
+    )
+    thread = models.ForeignKey(
+        MessageThread,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    direction = models.CharField(max_length=20, choices=MessageDirection.choices)
+    sender_type = models.CharField(max_length=20, choices=SenderType.choices)
+    body = models.TextField()
+    external_message_id = models.CharField(max_length=127, blank=True)
+    sent_at = models.DateTimeField(default=timezone.now)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["thread", "sent_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["thread", "external_message_id"],
+                condition=models.Q(external_message_id__gt=""),
+                name="catalog_message_unique_external_id",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["tenant", "store", "thread", "sent_at"],
+                name="cat_msg_tnt_store_thread_sent",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.store_id and self.tenant_id and self.store.tenant_id != self.tenant_id:
+            raise ValidationError({"store": "Store must belong to the same tenant."})
+        if self.thread_id and self.store_id and self.thread.store_id != self.store_id:
+            raise ValidationError({"thread": "Thread must belong to the same store."})
+        if self.thread_id and self.tenant_id and self.thread.tenant_id != self.tenant_id:
+            raise ValidationError({"thread": "Thread must belong to the same tenant."})
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.thread_id:
+            thread = self.thread
+            if thread.last_message_at < self.sent_at:
+                thread.last_message_at = self.sent_at
+                thread.save(update_fields=["last_message_at", "updated_at"])
+
+    def __str__(self):
+        preview = self.body[:50] + ("..." if len(self.body) > 50 else "")
+        return f"{self.direction} ({preview})"

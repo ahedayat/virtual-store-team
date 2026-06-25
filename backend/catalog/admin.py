@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from catalog.models import Category, InventoryLevel, Order, OrderItem, Product
+from catalog.models import (
+    Category,
+    Customer,
+    InventoryLevel,
+    Message,
+    MessageThread,
+    Order,
+    OrderItem,
+    Product,
+)
 
 
 class OrderItemInline(admin.TabularInline):
@@ -107,6 +116,92 @@ class OrderAdmin(admin.ModelAdmin):
     ordering = ("-placed_at",)
     readonly_fields = ("id",)
     inlines = [OrderItemInline]
+
+
+class MessageInline(admin.TabularInline):
+    model = Message
+    extra = 0
+    readonly_fields = ("id", "created_at", "updated_at")
+    fields = (
+        "direction",
+        "sender_type",
+        "body",
+        "external_message_id",
+        "sent_at",
+    )
+    ordering = ("sent_at",)
+
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = (
+        "display_name",
+        "platform",
+        "platform_user_id",
+        "email",
+        "phone",
+        "tenant",
+        "store",
+        "created_at",
+    )
+    list_filter = ("tenant", "store", "platform")
+    search_fields = (
+        "display_name",
+        "email",
+        "phone",
+        "platform_user_id",
+        "tenant__name",
+        "tenant__slug",
+    )
+    ordering = ("tenant", "store", "display_name")
+    readonly_fields = ("id", "created_at", "updated_at")
+
+
+@admin.register(MessageThread)
+class MessageThreadAdmin(admin.ModelAdmin):
+    list_display = (
+        "subject",
+        "customer",
+        "platform",
+        "status",
+        "last_message_at",
+        "tenant",
+        "store",
+    )
+    list_filter = ("tenant", "store", "platform", "status")
+    search_fields = (
+        "subject",
+        "external_thread_id",
+        "customer__display_name",
+        "customer__platform_user_id",
+        "tenant__name",
+        "tenant__slug",
+    )
+    ordering = ("-last_message_at",)
+    readonly_fields = ("id", "created_at", "updated_at")
+    inlines = [MessageInline]
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = (
+        "thread",
+        "direction",
+        "sender_type",
+        "sent_at",
+        "tenant",
+        "store",
+    )
+    list_filter = ("tenant", "store", "direction", "sender_type")
+    search_fields = (
+        "body",
+        "external_message_id",
+        "thread__subject",
+        "tenant__name",
+        "tenant__slug",
+    )
+    ordering = ("-sent_at",)
+    readonly_fields = ("id", "created_at", "updated_at")
 
 
 @admin.register(OrderItem)

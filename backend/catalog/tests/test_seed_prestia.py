@@ -1,7 +1,16 @@
 from django.core.management import call_command
 from django.test import TestCase
 
-from catalog.models import Category, InventoryLevel, Order, OrderItem, Product
+from catalog.models import (
+    Category,
+    Customer,
+    InventoryLevel,
+    Message,
+    MessageThread,
+    Order,
+    OrderItem,
+    Product,
+)
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -85,3 +94,45 @@ class SeedPrestiaCommandTests(TestCase):
         call_command("seed_prestia")
 
         self.assertEqual(InventoryLevel.objects.count(), inventory_count)
+
+    def test_seed_prestia_creates_customers_threads_and_messages(self):
+        call_command("seed_prestia")
+
+        tenant = Tenant.objects.get(slug="prestia")
+        store = Store.objects.get(tenant=tenant, slug="main")
+
+        self.assertEqual(Customer.objects.filter(tenant=tenant, store=store).count(), 5)
+        self.assertEqual(
+            MessageThread.objects.filter(tenant=tenant, store=store).count(),
+            5,
+        )
+        self.assertGreaterEqual(
+            Message.objects.filter(tenant=tenant, store=store).count(),
+            10,
+        )
+        self.assertTrue(
+            Message.objects.filter(
+                tenant=tenant,
+                store=store,
+                body__icontains="sara.jamali@example.com",
+            ).exists()
+        )
+        self.assertTrue(
+            Message.objects.filter(
+                tenant=tenant,
+                store=store,
+                body__icontains="۰۹۱۷۱۱۲۲۳۳۴",
+            ).exists()
+        )
+
+    def test_seed_prestia_messages_are_idempotent(self):
+        call_command("seed_prestia")
+        customer_count = Customer.objects.count()
+        thread_count = MessageThread.objects.count()
+        message_count = Message.objects.count()
+
+        call_command("seed_prestia")
+
+        self.assertEqual(Customer.objects.count(), customer_count)
+        self.assertEqual(MessageThread.objects.count(), thread_count)
+        self.assertEqual(Message.objects.count(), message_count)

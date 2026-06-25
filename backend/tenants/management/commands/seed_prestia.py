@@ -5,7 +5,21 @@ from zoneinfo import ZoneInfo
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from catalog.models import Category, InventoryLevel, Order, OrderItem, OrderStatus, Product
+from catalog.models import (
+    Category,
+    Customer,
+    InventoryLevel,
+    Message,
+    MessageDirection,
+    MessageThread,
+    Order,
+    OrderItem,
+    OrderStatus,
+    Platform,
+    Product,
+    SenderType,
+    ThreadStatus,
+)
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -333,6 +347,190 @@ PRESTIA_ORDERS = [
 ]
 
 
+PRESTIA_CUSTOMERS = [
+    {
+        "platform_user_id": "ig-prestia-001",
+        "platform": Platform.INSTAGRAM,
+        "display_name": "Sara Jamali",
+        "email": "sara.jamali@example.com",
+        "phone": "09121234567",
+    },
+    {
+        "platform_user_id": "ig-prestia-002",
+        "platform": Platform.INSTAGRAM,
+        "display_name": "Emily Chen",
+        "email": "emily.chen@example.com",
+        "phone": "",
+    },
+    {
+        "platform_user_id": "ig-prestia-003",
+        "platform": Platform.INSTAGRAM,
+        "display_name": "Nadia Rahimi",
+        "email": "",
+        "phone": "۰۹۱۷۱۱۲۲۳۳۴",
+    },
+    {
+        "platform_user_id": "ig-prestia-004",
+        "platform": Platform.INSTAGRAM,
+        "display_name": "Jordan Lee",
+        "email": "jordan.lee@example.com",
+        "phone": "",
+    },
+    {
+        "platform_user_id": "ig-prestia-005",
+        "platform": Platform.INSTAGRAM,
+        "display_name": "Mina Karimi",
+        "email": "mina.karimi@example.com",
+        "phone": "+98 912 555 0199",
+    },
+]
+
+
+PRESTIA_THREADS = [
+    {
+        "external_thread_id": "prestia-thread-availability",
+        "customer_platform_user_id": "ig-prestia-001",
+        "platform": Platform.INSTAGRAM,
+        "subject": "Milano Leather Tote availability",
+        "status": ThreadStatus.OPEN,
+        "days_ago": 0,
+        "hour": 9,
+    },
+    {
+        "external_thread_id": "prestia-thread-shipping",
+        "customer_platform_user_id": "ig-prestia-002",
+        "platform": Platform.INSTAGRAM,
+        "subject": "Shipping time to California",
+        "status": ThreadStatus.OPEN,
+        "days_ago": 1,
+        "hour": 14,
+    },
+    {
+        "external_thread_id": "prestia-thread-material",
+        "customer_platform_user_id": "ig-prestia-003",
+        "platform": Platform.INSTAGRAM,
+        "subject": "Luna Quilted material question",
+        "status": ThreadStatus.PENDING,
+        "days_ago": 2,
+        "hour": 11,
+    },
+    {
+        "external_thread_id": "prestia-thread-return",
+        "customer_platform_user_id": "ig-prestia-004",
+        "platform": Platform.INSTAGRAM,
+        "subject": "Exchange for different color",
+        "status": ThreadStatus.OPEN,
+        "days_ago": 3,
+        "hour": 16,
+    },
+    {
+        "external_thread_id": "prestia-thread-order-followup",
+        "customer_platform_user_id": "ig-prestia-005",
+        "platform": Platform.INSTAGRAM,
+        "subject": "Order PRS-ORD-001 follow-up",
+        "status": ThreadStatus.OPEN,
+        "days_ago": 0,
+        "hour": 15,
+    },
+]
+
+
+PRESTIA_MESSAGES = [
+    {
+        "external_thread_id": "prestia-thread-availability",
+        "external_message_id": "prestia-msg-avail-001",
+        "direction": MessageDirection.INBOUND,
+        "sender_type": SenderType.CUSTOMER,
+        "body": (
+            "Hi! Is the Milano Leather Tote still available in cognac? "
+            "Please email me at sara.jamali@example.com if it is back in stock."
+        ),
+        "minutes_offset": 0,
+    },
+    {
+        "external_thread_id": "prestia-thread-availability",
+        "external_message_id": "prestia-msg-avail-002",
+        "direction": MessageDirection.OUTBOUND,
+        "sender_type": SenderType.STAFF,
+        "body": (
+            "Thanks for reaching out! The Milano Leather Tote in cognac is low stock "
+            "but still available. We can reserve one for 24 hours."
+        ),
+        "minutes_offset": 12,
+    },
+    {
+        "external_thread_id": "prestia-thread-shipping",
+        "external_message_id": "prestia-msg-ship-001",
+        "direction": MessageDirection.INBOUND,
+        "sender_type": SenderType.CUSTOMER,
+        "body": "How long does standard shipping take to Los Angeles?",
+        "minutes_offset": 0,
+    },
+    {
+        "external_thread_id": "prestia-thread-shipping",
+        "external_message_id": "prestia-msg-ship-002",
+        "direction": MessageDirection.OUTBOUND,
+        "sender_type": SenderType.STAFF,
+        "body": "Standard shipping to California usually arrives in 3-5 business days.",
+        "minutes_offset": 20,
+    },
+    {
+        "external_thread_id": "prestia-thread-material",
+        "external_message_id": "prestia-msg-mat-001",
+        "direction": MessageDirection.INBOUND,
+        "sender_type": SenderType.CUSTOMER,
+        "body": (
+            "Is the Luna Quilted Shoulder Bag real leather or vegan leather? "
+            "You can call me at ۰۹۱۷۱۱۲۲۳۳۴ if easier."
+        ),
+        "minutes_offset": 0,
+    },
+    {
+        "external_thread_id": "prestia-thread-material",
+        "external_message_id": "prestia-msg-mat-002",
+        "direction": MessageDirection.OUTBOUND,
+        "sender_type": SenderType.STAFF,
+        "body": "The Luna Quilted Shoulder Bag uses premium vegan leather with a suede lining.",
+        "minutes_offset": 18,
+    },
+    {
+        "external_thread_id": "prestia-thread-return",
+        "external_message_id": "prestia-msg-ret-001",
+        "direction": MessageDirection.INBOUND,
+        "sender_type": SenderType.CUSTOMER,
+        "body": "Can I exchange my Aria Mini Crossbody for the black color within 30 days?",
+        "minutes_offset": 0,
+    },
+    {
+        "external_thread_id": "prestia-thread-return",
+        "external_message_id": "prestia-msg-ret-002",
+        "direction": MessageDirection.OUTBOUND,
+        "sender_type": SenderType.STAFF,
+        "body": "Yes, unworn items can be exchanged within 30 days. We will email return instructions.",
+        "minutes_offset": 25,
+    },
+    {
+        "external_thread_id": "prestia-thread-order-followup",
+        "external_message_id": "prestia-msg-ord-001",
+        "direction": MessageDirection.INBOUND,
+        "sender_type": SenderType.CUSTOMER,
+        "body": (
+            "I placed order PRS-ORD-001 yesterday. Has it shipped yet? "
+            "My number is +98 912 555 0199."
+        ),
+        "minutes_offset": 0,
+    },
+    {
+        "external_thread_id": "prestia-thread-order-followup",
+        "external_message_id": "prestia-msg-ord-002",
+        "direction": MessageDirection.OUTBOUND,
+        "sender_type": SenderType.SYSTEM,
+        "body": "Your order is packed and will ship today. Tracking will be sent shortly.",
+        "minutes_offset": 10,
+    },
+]
+
+
 def _placed_at_for_store(store: Store, *, days_ago: int, hour: int):
     store_tz = ZoneInfo(store.timezone)
     local_now = timezone.now().astimezone(store_tz)
@@ -341,6 +539,17 @@ def _placed_at_for_store(store: Store, *, days_ago: int, hour: int):
     )
     local_placed_at = local_day.replace(hour=hour)
     return local_placed_at.astimezone(dt_timezone.utc)
+
+
+def _message_sent_at_for_store(
+    store: Store,
+    *,
+    days_ago: int,
+    hour: int,
+    minutes_offset: int,
+):
+    base = _placed_at_for_store(store, days_ago=days_ago, hour=hour)
+    return base + timedelta(minutes=minutes_offset)
 
 
 class Command(BaseCommand):
@@ -493,6 +702,92 @@ class Command(BaseCommand):
             if created:
                 inventory_created += 1
 
+        customers_by_platform_user_id = {}
+        customers_created = 0
+        for customer_data in PRESTIA_CUSTOMERS:
+            customer, created = Customer.objects.get_or_create(
+                tenant=tenant,
+                store=store,
+                platform=customer_data["platform"],
+                platform_user_id=customer_data["platform_user_id"],
+                defaults={
+                    "display_name": customer_data["display_name"],
+                    "email": customer_data["email"],
+                    "phone": customer_data["phone"],
+                    "metadata": {"seed": "prestia"},
+                },
+            )
+            customers_by_platform_user_id[customer.platform_user_id] = customer
+            if created:
+                customers_created += 1
+
+        threads_by_external_id = {}
+        threads_created = 0
+        for thread_data in PRESTIA_THREADS:
+            customer = customers_by_platform_user_id[thread_data["customer_platform_user_id"]]
+            last_message_at = _placed_at_for_store(
+                store,
+                days_ago=thread_data["days_ago"],
+                hour=thread_data["hour"],
+            )
+            thread, created = MessageThread.objects.get_or_create(
+                tenant=tenant,
+                store=store,
+                external_thread_id=thread_data["external_thread_id"],
+                defaults={
+                    "customer": customer,
+                    "platform": thread_data["platform"],
+                    "subject": thread_data["subject"],
+                    "status": thread_data["status"],
+                    "last_message_at": last_message_at,
+                    "metadata": {"seed": "prestia"},
+                },
+            )
+            threads_by_external_id[thread.external_thread_id] = thread
+            if created:
+                threads_created += 1
+
+        messages_created = 0
+        for message_data in PRESTIA_MESSAGES:
+            thread_seed = next(
+                item
+                for item in PRESTIA_THREADS
+                if item["external_thread_id"] == message_data["external_thread_id"]
+            )
+            thread = threads_by_external_id[message_data["external_thread_id"]]
+            sent_at = _message_sent_at_for_store(
+                store,
+                days_ago=thread_seed["days_ago"],
+                hour=thread_seed["hour"],
+                minutes_offset=message_data["minutes_offset"],
+            )
+            _, created = Message.objects.get_or_create(
+                thread=thread,
+                external_message_id=message_data["external_message_id"],
+                defaults={
+                    "tenant": tenant,
+                    "store": store,
+                    "direction": message_data["direction"],
+                    "sender_type": message_data["sender_type"],
+                    "body": message_data["body"],
+                    "sent_at": sent_at,
+                    "metadata": {"seed": "prestia"},
+                },
+            )
+            if created:
+                messages_created += 1
+
+        for thread in threads_by_external_id.values():
+            latest_sent_at = (
+                Message.objects.filter(thread=thread)
+                .order_by("-sent_at")
+                .values_list("sent_at", flat=True)
+                .first()
+            )
+            if latest_sent_at and thread.last_message_at < latest_sent_at:
+                thread.last_message_at = latest_sent_at
+                thread.save(update_fields=["last_message_at", "updated_at"])
+
         self.stdout.write(
             self.style.SUCCESS(
                 "Prestia seed complete: "
@@ -502,6 +797,9 @@ class Command(BaseCommand):
                 f"{products_created} products created, "
                 f"{orders_created} orders created, "
                 f"{order_items_created} order items created, "
-                f"{inventory_created} inventory levels created."
+                f"{inventory_created} inventory levels created, "
+                f"{customers_created} customers created, "
+                f"{threads_created} message threads created, "
+                f"{messages_created} messages created."
             )
         )

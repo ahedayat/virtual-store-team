@@ -10,7 +10,15 @@ from django.utils import timezone
 
 from django.db.models import F
 
-from catalog.models import InventoryLevel, Order, OrderItem, REVENUE_COUNTABLE_ORDER_STATUSES
+from catalog.models import (
+    InventoryLevel,
+    Message,
+    MessageThread,
+    Order,
+    OrderItem,
+    REVENUE_COUNTABLE_ORDER_STATUSES,
+)
+from catalog.pii import PiiSanitizer
 from stores.models import Store
 
 
@@ -188,4 +196,66 @@ def build_low_stock_summary(store: Store, reference: datetime | None = None) -> 
         "store_id": str(store.id),
         "low_stock_count": len(items),
         "items": items,
+    }
+
+
+def _serialize_message(message: Message) -> dict:
+    return {
+        "message_id": str(message.id),
+        "direction": message.direction,
+        "sender_type": message.sender_type,
+        "body": PiiSanitizer.sanitize_text(message.body),
+        "sent_at": message.sent_at.isoformat(),
+    }
+
+
+def _serialize_thread(
+    thread: MessageThread,
+    *,
+    messages_per_thread: int,
+) -> dict:
+    recent_messages = list(
+        Message.objects.filter(thread=thread)
+        .order_by("-sent_at")[:messages_per_thread]
+    )
+    recent_messages.reverse()
+
+    return {
+        "thread_id": str(thread.id),
+        "customer_ref": PiiSanitizer.customer_ref(thread.customer_id),
+        "platform": thread.platform,
+        "status": thread.status,
+        "subject": PiiSanitizer.sanitize_text(thread.subject),
+        "last_message_at": thread.last_message_at.isoformat(),
+        "messages": [_serialize_message(message) for message in recent_messages],
+    }
+
+
+def build_recent_messages_summary(
+    store: Store,
+    *,
+    thread_limit: int = 10,
+    messages_per_thread: int = 5,
+    reference: datetime | None = None,
+) -> dict:
+    """Return recent message threads with sanitized bodies for AI consumption."""
+    threads = list(
+        MessageThread.objects.filter(
+            tenant=store.tenant,
+            store=store,
+        )
+        .select_related("customer")
+        .order_by("-last_message_at")[:thread_limit]
+    )
+
+    generated_at = (reference or timezone.now()).isoformat()
+
+    return {
+        "generated_at": generated_at,
+        "store_id": str(store.id),
+        "thread_count": len(threads),
+        "threads": [
+            _serialize_thread(thread, messages_per_thread=messages_per_thread)
+            for thread in threads
+        ],
     }

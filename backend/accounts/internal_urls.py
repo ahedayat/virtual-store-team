@@ -1,7 +1,11 @@
 from django.urls import path
 
 from accounts.internal_views import InternalAIAuthCheckView
-from catalog.internal_views import InternalLowStockInventoryView, InternalSalesSummaryView
+from catalog.internal_views import (
+    InternalLowStockInventoryView,
+    InternalRecentMessagesView,
+    InternalSalesSummaryView,
+)
 
 urlpatterns = [
     path(
@@ -18,5 +22,10 @@ urlpatterns = [
         "stores/<uuid:store_id>/inventory/low-stock/",
         InternalLowStockInventoryView.as_view(),
         name="internal-ai-low-stock-inventory",
+    ),
+    path(
+        "stores/<uuid:store_id>/messages/recent/",
+        InternalRecentMessagesView.as_view(),
+        name="internal-ai-recent-messages",
     ),
 ]

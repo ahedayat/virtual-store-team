@@ -7,12 +7,23 @@ from catalog.internal_views import (
     InternalRecentMessagesView,
     InternalSalesSummaryView,
 )
+from operations.internal_views import InternalActionCreateView, InternalAgentOutputCreateView
 
 urlpatterns = [
     path(
         "auth-check/",
         InternalAIAuthCheckView.as_view(),
         name="internal-ai-auth-check",
+    ),
+    path(
+        "actions/",
+        InternalActionCreateView.as_view(),
+        name="internal-ai-actions-create",
+    ),
+    path(
+        "agent-outputs/",
+        InternalAgentOutputCreateView.as_view(),
+        name="internal-ai-agent-outputs-create",
     ),
     path(
         "context/<uuid:report_run_id>/",

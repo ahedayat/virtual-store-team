@@ -26,8 +26,10 @@ from operations.exceptions import (
     ActionPayloadValidationError,
     ActionScopeError,
     ActionTransitionError,
+    AgentOutputPayloadValidationError,
+    AgentOutputScopeError,
 )
-from operations.models import Action, ActionEvent, ActionEventActorType, AgentOutput
+from operations.models import Action, ActionEvent, ActionEventActorType, AgentOutput, ReportRun
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -434,3 +436,88 @@ class ActionService:
         ) is True:
             return "low_risk_payload"
         return "default_action_type_policy"
+
+
+class AgentOutputService:
+    @classmethod
+    def create_from_agent_payload(
+        cls,
+        *,
+        tenant: Tenant,
+        store: Store,
+        agent_name: str,
+        output_type: str,
+        payload: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        report_run: ReportRun | None = None,
+    ) -> AgentOutput:
+        cls._validate_scope(tenant=tenant, store=store, report_run=report_run)
+        cls._validate_agent_name(agent_name)
+        normalized = cls._validate_and_normalize_payload(
+            output_type=output_type,
+            payload=payload,
+            metadata=metadata,
+        )
+
+        output_data = {
+            "output_type": normalized["output_type"],
+            "payload": normalized["payload"],
+        }
+        if normalized["metadata"]:
+            output_data["metadata"] = normalized["metadata"]
+
+        return AgentOutput.objects.create(
+            tenant=tenant,
+            store=store,
+            report_run=report_run,
+            agent_name=agent_name,
+            output=output_data,
+        )
+
+    @staticmethod
+    def _validate_scope(
+        *,
+        tenant: Tenant,
+        store: Store,
+        report_run: ReportRun | None,
+    ) -> None:
+        if store.tenant_id != tenant.id:
+            raise AgentOutputScopeError("Store does not belong to the trusted tenant context.")
+
+        if report_run is not None:
+            if report_run.tenant_id != tenant.id or report_run.store_id != store.id:
+                raise AgentOutputScopeError(
+                    "Report run does not belong to the trusted tenant/store context."
+                )
+
+    @staticmethod
+    def _validate_agent_name(agent_name: str) -> None:
+        if agent_name not in ALLOWED_AGENT_NAMES:
+            raise AgentOutputPayloadValidationError(
+                f"Unsupported agent_name: {agent_name!r}."
+            )
+
+    @staticmethod
+    def _validate_and_normalize_payload(
+        *,
+        output_type: str,
+        payload: dict[str, Any],
+        metadata: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if not isinstance(output_type, str) or not output_type.strip():
+            raise AgentOutputPayloadValidationError(
+                "output_type is required and must be non-empty."
+            )
+
+        if not isinstance(payload, dict):
+            raise AgentOutputPayloadValidationError("payload must be a JSON object.")
+
+        normalized_metadata = metadata or {}
+        if not isinstance(normalized_metadata, dict):
+            raise AgentOutputPayloadValidationError("metadata must be a JSON object.")
+
+        return {
+            "output_type": output_type.strip(),
+            "payload": payload,
+            "metadata": normalized_metadata,
+        }

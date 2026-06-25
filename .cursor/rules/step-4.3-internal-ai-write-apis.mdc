@@ -1,0 +1,108 @@
+---
+description: Phase 4.3 rules for implementing internal AI write APIs
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-4.3.md"
+alwaysApply: false
+---
+
+# Step 4.3 — Internal AI Write APIs Rules
+
+This rule applies only to Phase 4.3 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement only these internal AI write endpoints:
+
+- `POST /internal/ai/actions/`
+- `POST /internal/ai/agent-outputs/`
+
+Do not implement later Phase 4 subtasks:
+
+- Do not implement `POST /internal/ai/report-runs/{id}/complete/`
+- Do not implement `GET /api/history/`
+- Do not implement dashboard-facing action endpoints
+- Do not implement manager approve/reject API endpoints
+- Do not implement Celery execution tasks
+- Do not implement real external side effects
+- Do not implement frontend UI
+
+## Architecture Rules
+
+- Django and Postgres remain the source of truth.
+- AI services access Django only through internal APIs protected by service JWT.
+- Internal AI write endpoints must use `InternalAIAuthentication` or the existing service JWT authentication mechanism.
+- Human users must not be able to call `/internal/ai/*` endpoints.
+- Tenant and store must come from trusted service JWT/auth context.
+- Never trust `tenant_id` or `store_id` from the request body.
+- Do not duplicate action lifecycle logic in views or serializers.
+- Reuse `ActionService.create_from_agent_payload()` for action creation.
+- Keep implementation generic and avoid Prestia-specific logic.
+
+## Endpoint Rules
+
+### `POST /internal/ai/actions/`
+
+This endpoint must:
+
+- Accept a structured agent action payload.
+- Validate request data with a serializer or equivalent validation layer.
+- Resolve tenant/store from the authenticated service context.
+- Validate optional `report_run_id` and `agent_output_id` against the same tenant/store.
+- Call `ActionService.create_from_agent_payload()`.
+- Return the created action summary including ID, status, action type, priority, and approval state.
+- Never approve, reject, execute, or queue beyond the behavior already defined in Step 4.1.
+
+### `POST /internal/ai/agent-outputs/`
+
+This endpoint must:
+
+- Accept structured output from an AI service.
+- Persist an `AgentOutput` record.
+- Resolve tenant/store from the authenticated service context.
+- Validate optional `report_run_id` against the same tenant/store.
+- Store agent name, output type/category, structured payload, and optional metadata.
+- Avoid logging raw payload bodies.
+- Return the created agent output ID and metadata.
+
+## Security Rules
+
+- All internal endpoints require service JWT.
+- Reject missing, expired, wrong-audience, or malformed service tokens.
+- Reject cross-tenant/store IDs.
+- Reject unsupported service names if service registry constants exist.
+- Return 404 for cross-tenant object references when appropriate to avoid information leakage.
+- Do not expose internal endpoints to human-authenticated users.
+
+## Testing Rules
+
+Add tests for:
+
+- valid service JWT can create an action
+- invalid/missing token is rejected
+- human user token cannot access internal AI endpoints
+- action creation endpoint uses trusted tenant/store from JWT, not request body
+- cross-tenant `report_run_id` is rejected
+- cross-tenant `agent_output_id` is rejected if supported
+- valid service JWT can create an agent output
+- invalid agent output payload is rejected
+- action endpoint delegates to `ActionService.create_from_agent_payload()`
+- no approve/reject/execution behavior is introduced
+
+## Documentation Rules
+
+Create or update:
+
+- `docs/phases/step-4.3.md`
+
+The documentation must explain:
+
+- implemented endpoints
+- request/response examples
+- authentication requirements
+- tenant/store scoping rules
+- service-layer delegation
+- tests added
+- validation commands
+- what was intentionally not implemented
+- notes for Step 4.4

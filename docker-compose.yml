@@ -1,0 +1,109 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  coordinator-agent:
+    build:
+      context: ./agents/coordinator
+    env_file:
+      - .env
+    ports:
+      - "8100:8100"
+    networks:
+      - app-network
+
+  sales-agent:
+    build:
+      context: ./agents/sales
+    env_file:
+      - .env
+    ports:
+      - "8101:8101"
+    networks:
+      - app-network
+
+  content-agent:
+    build:
+      context: ./agents/content
+    env_file:
+      - .env
+    ports:
+      - "8102:8102"
+    networks:
+      - app-network
+
+  support-agent:
+    build:
+      context: ./agents/support
+    env_file:
+      - .env
+    ports:
+      - "8103:8103"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    name: app-network
+
+volumes:
+  postgres_data:
+    name: postgres_data

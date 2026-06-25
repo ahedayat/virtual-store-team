@@ -2,6 +2,7 @@ from django.urls import path
 
 from accounts.internal_views import InternalAIAuthCheckView
 from catalog.internal_views import (
+    InternalAIContextView,
     InternalLowStockInventoryView,
     InternalRecentMessagesView,
     InternalSalesSummaryView,
@@ -12,6 +13,11 @@ urlpatterns = [
         "auth-check/",
         InternalAIAuthCheckView.as_view(),
         name="internal-ai-auth-check",
+    ),
+    path(
+        "context/<uuid:report_run_id>/",
+        InternalAIContextView.as_view(),
+        name="internal-ai-context",
     ),
     path(
         "stores/<uuid:store_id>/sales/summary/",

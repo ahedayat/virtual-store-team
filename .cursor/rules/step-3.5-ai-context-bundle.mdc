@@ -1,0 +1,149 @@
+---
+description: Rules for Step 3.5 - Internal AI context bundle endpoint
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-3.5.md"
+alwaysApply: false
+---
+
+# Step 3.5 Rules — Internal AI Context Bundle
+
+This rule applies only to Step 3.5 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement Phase 3.5 only:
+
+- `GET /internal/ai/context/{report_run_id}/` stub endpoint
+- Context bundle builder service
+- Sanitized AI-facing bundle containing existing Phase 3 data:
+  - store metadata
+  - product/category summary
+  - sales summary
+  - low-stock inventory
+  - recent sanitized messages
+- Internal AI/service JWT protection
+- Tenant/store/report_run_id validation where possible
+- Tests for security, shape, tenant isolation, and PII safety
+- Documentation at `docs/phases/step-3.5.md`
+
+Do not implement real ReportRun persistence, DailyReport, AgentOutput, Action, ActionEvent, Celery orchestration, coordinator-agent workflow, specialist agent logic, LangGraph, or frontend dashboard behavior in this step.
+
+## Architecture Rules
+
+- Django + Postgres remain the source of truth.
+- AI services must access store data only through Django internal APIs.
+- The context endpoint must be read-only.
+- Reuse existing tenant/store abstractions, internal AI authentication, serializers, URL conventions, services, PII sanitizer, and test patterns.
+- Do not duplicate sales, inventory, product, or message aggregation logic if services already exist from Steps 3.1–3.4.
+- Do not introduce Prestia-specific application logic.
+- Prestia must remain seed/demo data only.
+
+## Report Run Stub Rules
+
+- `report_run_id` is accepted as a path parameter for future compatibility.
+- Do not create the real `ReportRun` model in this step. That belongs to Phase 4.
+- Validate that `report_run_id` is a UUID or valid identifier according to the project convention.
+- If the service JWT already contains a `report_run_id` claim, validate that it matches the path parameter.
+- If no `report_run_id` claim exists, use the path parameter only as a trace/context reference and echo it in the response.
+- The endpoint must use tenant_id and store_id from the service JWT as the authority for data access.
+
+## Context Bundle Rules
+
+The context bundle should include a stable JSON structure suitable for future coordinator-agent consumption.
+
+Suggested top-level shape:
+
+- `report_run_id`
+- `generated_at`
+- `tenant`
+- `store`
+- `products`
+- `sales_summary`
+- `inventory`
+- `messages`
+- `warnings`
+
+The endpoint should compose existing data from Phase 3:
+
+- Products/categories from Step 3.1
+- Sales summary from Step 3.2
+- Low-stock inventory from Step 3.3
+- Recent sanitized messages from Step 3.4
+
+Keep this endpoint a stub/orchestration point only. It should aggregate existing read services, not implement agent behavior.
+
+## PII Rules
+
+- No raw PII may appear in the response.
+- Reuse the existing `PiiSanitizer` from Step 3.4.
+- Recent messages must be sanitized.
+- Do not include raw:
+  - customer email
+  - phone number
+  - physical address
+  - raw platform user ID
+  - payment data
+  - raw customer identity fields
+- Customer references must be opaque, such as `Customer #123` or `customer_ref`.
+
+## Internal API Rules
+
+Add or complete:
+
+- `GET /internal/ai/context/{report_run_id}/`
+
+The endpoint must:
+
+- Require existing internal AI/service JWT authentication.
+- Validate tenant_id from the service JWT.
+- Validate store_id from the service JWT.
+- Reject cross-tenant or cross-store access.
+- Return 401 for missing/invalid JWT.
+- Return 403 or 404 according to project convention for forbidden tenant/store access.
+- Return a stable sanitized JSON response.
+- Be read-only.
+
+## Testing Rules
+
+Add focused tests for:
+
+- Context endpoint requires service JWT.
+- Context endpoint accepts a valid service JWT.
+- Context endpoint rejects invalid, expired, or wrong-audience tokens if covered by existing auth utilities.
+- Context endpoint rejects cross-tenant or cross-store access.
+- Context endpoint returns expected top-level keys.
+- Context endpoint includes product summary data.
+- Context endpoint includes sales summary data.
+- Context endpoint includes low-stock inventory data.
+- Context endpoint includes recent sanitized messages.
+- Context endpoint does not contain raw email or phone values from seeded messages.
+- `report_run_id` is echoed or validated according to the stub behavior.
+- Missing optional data produces an empty section or warning rather than a 500 error.
+
+## Documentation Rules
+
+Create `docs/phases/step-3.5.md` and include:
+
+- Step title and goal
+- Summary of implemented changes
+- Files created/modified
+- Context bundle design
+- Endpoint contract
+- Example response shape
+- Report run stub behavior
+- Tenant/store scoping decisions
+- PII sanitization guarantees
+- How existing Phase 3 services are reused
+- Tests added
+- How to run relevant tests
+- Explicit out-of-scope items deferred to later phases:
+  - ReportRun model
+  - DailyReport model
+  - AgentOutput model
+  - Action and ActionEvent models
+  - Celery report generation
+  - coordinator-agent workflow
+  - LangGraph
+  - specialist agent execution
+  - frontend dashboard integration

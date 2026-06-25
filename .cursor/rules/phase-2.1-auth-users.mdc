@@ -1,0 +1,58 @@
+---
+description: Rules for Phase 2.1 - Manager Auth API endpoints
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-2.1.md"
+alwaysApply: false
+---
+
+# Phase 2.1 — Manager Authentication API Rules
+
+This phase is limited to **human dashboard authentication endpoints** only:
+
+- `POST /api/auth/login/`
+- `POST /api/auth/logout/`
+- `GET /api/auth/me/`
+
+## Scope
+
+- Authenticate manager users by email and password.
+- Establish session-based auth using Django's existing session middleware (no new unrelated auth mechanism).
+- Return safe user, tenant, and store context for the dashboard frontend.
+- Add tests for login, logout, and me endpoint behavior.
+- Document the step at `docs/phases/step-2.1.md`.
+
+## Implementation constraints
+
+- Use Django REST Framework conventions already present in the backend.
+- Respect the custom `User`, `Tenant`, `Store`, and tenant-scoped architecture from Phase 1.
+- Keep the API generic and SaaS-ready — do not hardcode Prestia-specific logic.
+- Never expose password hashes, secrets, internal service tokens, or sensitive tenant settings.
+- Use clear serializers for login request validation and authenticated user responses.
+- Login: allow anonymous. Logout and me: authenticated only.
+- Anonymous access to `/api/auth/me/` must return `401 Unauthorized`.
+
+## Explicitly out of scope
+
+Do not implement these in Phase 2.1:
+
+- Phase 2.2, 2.3, or 2.4 features (except minimal placeholders strictly required by existing structure)
+- `InternalAIAuthentication`
+- Service JWT validation middleware
+- Service token verification tests
+- Internal AI APIs
+- Full RBAC beyond what the existing `User` model already provides
+
+## Documentation requirement
+
+Create `docs/phases/step-2.1.md` and include:
+
+- Step title and goal
+- Scope and explicit non-goals
+- Endpoints implemented with request/response examples
+- Authentication mechanism used
+- Files changed
+- Tests added and how to run them
+- Known limitations and next steps for Phase 2.2
+
+Make it clear that service JWT and internal AI authentication are intentionally left for later Phase 2 subtasks.

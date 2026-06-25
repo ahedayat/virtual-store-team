@@ -1,0 +1,121 @@
+---
+description: Phase 4.4 rules for implementing internal report run completion API
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-4.4.md"
+alwaysApply: false
+---
+
+# Step 4.4 — Internal Report Run Completion Rules
+
+This rule applies only to Phase 4.4 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement only:
+
+- `POST /internal/ai/report-runs/{id}/complete/`
+
+Do not implement later Phase 4 or Phase 5 work:
+
+- Do not implement `GET /api/history/`
+- Do not implement dashboard-facing report list/detail APIs unless they already exist and need minor compatibility updates
+- Do not implement manager action approve/reject API endpoints
+- Do not implement Celery report generation tasks
+- Do not implement coordinator HTTP client logic
+- Do not implement agent services
+- Do not implement frontend UI
+- Do not execute actions
+- Do not add external side effects
+
+## Architecture Rules
+
+- Django and Postgres remain the source of truth.
+- The endpoint must be internal-only and protected by service JWT authentication.
+- Use `InternalAIAuthentication` or the existing service JWT authentication mechanism.
+- Only trusted AI service identities, especially `coordinator-agent`, may complete a report run.
+- Human users must not be able to call `/internal/ai/report-runs/{id}/complete/`.
+- Tenant and store must come from the authenticated service context via `resolve_tenant_and_store()` or equivalent helpers.
+- Never trust `tenant_id` or `store_id` from the request body.
+- Completion logic must live in a service layer (for example `ReportRunService.complete()`), not directly inside the view.
+- Do not auto-approve actions during report completion.
+- Keep the implementation generic and avoid Prestia-specific logic.
+
+## Report Completion Rules
+
+The completion endpoint must:
+
+- Validate the report run belongs to the authenticated tenant/store.
+- Validate the report run is in a completable state, preferably `running`.
+- Persist or update the `DailyReport` record for the report run.
+- Store the final report payload in `DailyReport.content` as structured JSON.
+- Set `DailyReport.generated_at` from the payload or server time as appropriate.
+- Link referenced `AgentOutput` records when supported by the current model.
+- Link or validate referenced `Action` records when supported by the current model.
+- Mark `ReportRun.status = completed`.
+- Set completion timestamp fields if available.
+- Clear or preserve `ReportRun.error_message` according to existing model conventions.
+- Perform report persistence and status update in one database transaction.
+
+## Security Rules
+
+- Require service JWT authentication.
+- Reject missing, invalid, expired, or wrong-audience tokens.
+- Reject human/session authentication.
+- Reject cross-tenant or cross-store report run references.
+- Return 404 for cross-tenant object references when that is the project convention.
+- Do not log full report payloads.
+- Do not log raw agent output payloads.
+- Log only safe identifiers such as tenant ID, store ID, report run ID, service name, and daily report ID.
+
+## State Rules
+
+Allowed transition:
+
+- `running` → `completed`
+
+Forbidden transitions:
+
+- `completed` must not be completed again unless explicit idempotency is implemented and documented.
+- `failed` must not be completed.
+- `queued` should not be completed unless the current codebase has no `running` state yet; prefer enforcing the documented lifecycle.
+- Cross-tenant report runs must never be visible or completable.
+
+## Testing Rules
+
+Add tests for:
+
+- valid coordinator service JWT can complete a running report run
+- missing token is rejected
+- invalid token is rejected
+- human user cannot call the endpoint
+- non-coordinator service is rejected if service-level restriction is implemented
+- cross-tenant report run is rejected
+- cross-store report run is rejected when stores are scoped separately
+- final DailyReport is created
+- ReportRun status becomes completed
+- invalid report payload is rejected
+- referenced AgentOutput IDs must belong to the same tenant/store
+- referenced Action IDs must belong to the same tenant/store
+- failed/completed report runs cannot be completed again unless documented idempotency exists
+- no history endpoint, Celery task, frontend UI, or external side effect is introduced
+
+## Documentation Rules
+
+Create or update:
+
+- `docs/phases/step-4.4.md`
+
+The documentation must explain:
+
+- implemented endpoint
+- request and response examples
+- authentication requirements
+- tenant/store scoping rules
+- report completion lifecycle
+- DailyReport persistence behavior
+- validation behavior
+- tests added
+- validation commands
+- what was intentionally not implemented
+- notes for Step 4.5

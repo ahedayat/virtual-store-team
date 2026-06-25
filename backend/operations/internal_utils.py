@@ -57,3 +57,19 @@ def resolve_agent_output(
         )
     except AgentOutput.DoesNotExist as exc:
         raise NotFound("Agent output not found.") from exc
+
+
+def get_scoped_report_run(
+    *,
+    tenant: Tenant,
+    store: Store,
+    report_run_id,
+) -> ReportRun:
+    try:
+        return ReportRun.objects.get(
+            pk=report_run_id,
+            tenant=tenant,
+            store=store,
+        )
+    except ReportRun.DoesNotExist as exc:
+        raise NotFound("Report run not found.") from exc

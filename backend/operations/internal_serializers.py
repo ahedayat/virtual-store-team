@@ -105,3 +105,43 @@ class InternalAgentOutputCreateResponseSerializer(serializers.ModelSerializer):
 
     def get_output_type(self, obj: AgentOutput) -> str:
         return obj.output.get("output_type", "")
+
+
+class InternalReportRunCompleteRequestSerializer(serializers.Serializer):
+    report = serializers.JSONField()
+    agent_output_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
+    action_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
+    metadata = serializers.JSONField(required=False, default=dict)
+    tenant_id = serializers.UUIDField(required=False, write_only=True)
+    store_id = serializers.UUIDField(required=False, write_only=True)
+
+    def validate_report(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("report must be a JSON object.")
+        if not value.get("generated_at"):
+            raise serializers.ValidationError("report.generated_at is required.")
+        return value
+
+    def validate_metadata(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("metadata must be a JSON object.")
+        return value
+
+
+class InternalReportRunCompleteResponseSerializer(serializers.Serializer):
+    report_run_id = serializers.UUIDField()
+    daily_report_id = serializers.UUIDField()
+    status = serializers.CharField()
+    completed_at = serializers.DateTimeField()

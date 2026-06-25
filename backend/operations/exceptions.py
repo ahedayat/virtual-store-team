@@ -24,3 +24,27 @@ class AgentOutputPayloadValidationError(AgentOutputServiceError):
 
 class AgentOutputScopeError(AgentOutputServiceError):
     """Raised when related records do not match trusted tenant/store scope."""
+
+
+class ReportRunServiceError(Exception):
+    """Base error for report run service failures."""
+
+
+class ReportRunPayloadValidationError(ReportRunServiceError):
+    """Raised when a report completion payload fails validation."""
+
+
+class ReportRunScopeError(ReportRunServiceError):
+    """Raised when related records do not match trusted tenant/store scope."""
+
+
+class ReportRunReferenceError(ReportRunServiceError):
+    """Raised when referenced agent outputs or actions are invalid."""
+
+
+class ReportRunTransitionError(ReportRunServiceError):
+    """Raised when a report run lifecycle transition is invalid."""
+
+
+class ReportRunPermissionError(ReportRunServiceError):
+    """Raised when a service is not allowed to complete report runs."""

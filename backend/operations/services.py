@@ -4,7 +4,9 @@ from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
+from accounts.constants import AI_SERVICE_COORDINATOR
 from accounts.models import User, UserRole
 from operations.constants import (
     ACTION_EVENT_TYPE_APPROVED,
@@ -20,6 +22,9 @@ from operations.constants import (
     DEFAULT_REQUIRES_APPROVAL_BY_ACTION_TYPE,
     MAX_ACTION_PRIORITY,
     MIN_ACTION_PRIORITY,
+    REPORT_RUN_STATUS_COMPLETED,
+    REPORT_RUN_STATUS_FAILED,
+    REPORT_RUN_STATUS_RUNNING,
     SUPPORTED_ACTION_TYPES,
 )
 from operations.exceptions import (
@@ -28,8 +33,20 @@ from operations.exceptions import (
     ActionTransitionError,
     AgentOutputPayloadValidationError,
     AgentOutputScopeError,
+    ReportRunPayloadValidationError,
+    ReportRunPermissionError,
+    ReportRunReferenceError,
+    ReportRunScopeError,
+    ReportRunTransitionError,
 )
-from operations.models import Action, ActionEvent, ActionEventActorType, AgentOutput, ReportRun
+from operations.models import (
+    Action,
+    ActionEvent,
+    ActionEventActorType,
+    AgentOutput,
+    DailyReport,
+    ReportRun,
+)
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -521,3 +538,189 @@ class AgentOutputService:
             "payload": payload,
             "metadata": normalized_metadata,
         }
+
+
+class ReportRunService:
+    @classmethod
+    def complete_from_ai_payload(
+        cls,
+        *,
+        report_run: ReportRun,
+        tenant: Tenant,
+        store: Store,
+        service_name: str,
+        report_payload: dict[str, Any],
+        agent_output_ids: list | None = None,
+        action_ids: list | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> DailyReport:
+        cls._validate_coordinator_service(service_name)
+        cls._validate_scope(report_run=report_run, tenant=tenant, store=store)
+        normalized_report = cls._validate_and_normalize_report_payload(report_payload)
+        normalized_metadata = cls._validate_metadata(metadata)
+        generated_at = normalized_report["generated_at"]
+        content = dict(report_payload)
+        if normalized_metadata:
+            content["metadata"] = normalized_metadata
+
+        with transaction.atomic():
+            locked_report_run = ReportRun.objects.select_for_update().get(pk=report_run.pk)
+            cls._validate_completable_status(locked_report_run)
+
+            cls._validate_agent_output_ids(
+                tenant=tenant,
+                store=store,
+                report_run=locked_report_run,
+                agent_output_ids=agent_output_ids or [],
+            )
+            cls._validate_action_ids(
+                tenant=tenant,
+                store=store,
+                report_run=locked_report_run,
+                action_ids=action_ids or [],
+            )
+
+            daily_report = DailyReport.objects.create(
+                tenant=tenant,
+                store=store,
+                report_run=locked_report_run,
+                content=content,
+                generated_at=generated_at,
+            )
+
+            locked_report_run.status = REPORT_RUN_STATUS_COMPLETED
+            locked_report_run.error_message = ""
+            locked_report_run.save(update_fields=["status", "error_message", "updated_at"])
+
+        daily_report.refresh_from_db()
+        return daily_report
+
+    @staticmethod
+    def _validate_coordinator_service(service_name: str) -> None:
+        if service_name != AI_SERVICE_COORDINATOR:
+            raise ReportRunPermissionError(
+                "Only coordinator-agent may complete report runs."
+            )
+
+    @staticmethod
+    def _validate_scope(
+        *,
+        report_run: ReportRun,
+        tenant: Tenant,
+        store: Store,
+    ) -> None:
+        if store.tenant_id != tenant.id:
+            raise ReportRunScopeError("Store does not belong to the trusted tenant context.")
+        if report_run.tenant_id != tenant.id or report_run.store_id != store.id:
+            raise ReportRunScopeError(
+                "Report run does not belong to the trusted tenant/store context."
+            )
+
+    @staticmethod
+    def _validate_completable_status(report_run: ReportRun) -> None:
+        if report_run.status == REPORT_RUN_STATUS_COMPLETED:
+            raise ReportRunTransitionError(
+                "Report run is already completed and cannot be completed again."
+            )
+        if report_run.status == REPORT_RUN_STATUS_FAILED:
+            raise ReportRunTransitionError(
+                "Failed report runs cannot be completed."
+            )
+        if report_run.status != REPORT_RUN_STATUS_RUNNING:
+            raise ReportRunTransitionError(
+                f"Report run cannot be completed from status {report_run.status!r}; "
+                f"expected {REPORT_RUN_STATUS_RUNNING!r}."
+            )
+
+    @classmethod
+    def _validate_and_normalize_report_payload(
+        cls,
+        report_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not isinstance(report_payload, dict):
+            raise ReportRunPayloadValidationError("report must be a JSON object.")
+
+        generated_at_raw = report_payload.get("generated_at")
+        if not generated_at_raw:
+            raise ReportRunPayloadValidationError("report.generated_at is required.")
+
+        generated_at = parse_datetime(str(generated_at_raw))
+        if generated_at is None:
+            raise ReportRunPayloadValidationError(
+                "report.generated_at must be a valid ISO 8601 datetime."
+            )
+
+        period = report_payload.get("period")
+        if period is not None and not isinstance(period, dict):
+            raise ReportRunPayloadValidationError("report.period must be a JSON object.")
+
+        return {"generated_at": generated_at}
+
+    @staticmethod
+    def _validate_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+        if metadata is None:
+            return {}
+        if not isinstance(metadata, dict):
+            raise ReportRunPayloadValidationError("metadata must be a JSON object.")
+        return metadata
+
+    @classmethod
+    def _validate_agent_output_ids(
+        cls,
+        *,
+        tenant: Tenant,
+        store: Store,
+        report_run: ReportRun,
+        agent_output_ids: list,
+    ) -> None:
+        if not agent_output_ids:
+            return
+
+        unique_ids = list(dict.fromkeys(agent_output_ids))
+        outputs = AgentOutput.objects.filter(
+            pk__in=unique_ids,
+            tenant=tenant,
+            store=store,
+        )
+        if outputs.count() != len(unique_ids):
+            raise ReportRunReferenceError(
+                "One or more agent_output_ids are invalid for this tenant/store."
+            )
+
+        for agent_output in outputs:
+            if (
+                agent_output.report_run_id is not None
+                and agent_output.report_run_id != report_run.id
+            ):
+                raise ReportRunReferenceError(
+                    "One or more agent_output_ids do not belong to this report run."
+                )
+
+    @classmethod
+    def _validate_action_ids(
+        cls,
+        *,
+        tenant: Tenant,
+        store: Store,
+        report_run: ReportRun,
+        action_ids: list,
+    ) -> None:
+        if not action_ids:
+            return
+
+        unique_ids = list(dict.fromkeys(action_ids))
+        actions = Action.objects.filter(
+            pk__in=unique_ids,
+            tenant=tenant,
+            store=store,
+        )
+        if actions.count() != len(unique_ids):
+            raise ReportRunReferenceError(
+                "One or more action_ids are invalid for this tenant/store."
+            )
+
+        for action in actions:
+            if action.report_run_id is not None and action.report_run_id != report_run.id:
+                raise ReportRunReferenceError(
+                    "One or more action_ids do not belong to this report run."
+                )

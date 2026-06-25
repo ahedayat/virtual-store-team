@@ -1,25 +1,36 @@
 import logging
 
 from rest_framework import status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.authentication import InternalAIAuthentication
-from operations.exceptions import ActionPayloadValidationError, ActionScopeError
+from operations.exceptions import (
+    ActionPayloadValidationError,
+    ActionScopeError,
+    ReportRunPayloadValidationError,
+    ReportRunPermissionError,
+    ReportRunReferenceError,
+    ReportRunScopeError,
+    ReportRunTransitionError,
+)
 from operations.internal_serializers import (
     InternalActionCreateRequestSerializer,
     InternalActionCreateResponseSerializer,
     InternalAgentOutputCreateRequestSerializer,
     InternalAgentOutputCreateResponseSerializer,
+    InternalReportRunCompleteRequestSerializer,
+    InternalReportRunCompleteResponseSerializer,
 )
 from operations.internal_utils import (
+    get_scoped_report_run,
     resolve_agent_output,
     resolve_report_run,
     resolve_tenant_and_store,
 )
-from operations.services import ActionService, AgentOutputService
+from operations.services import ActionService, AgentOutputService, ReportRunService
 
 logger = logging.getLogger(__name__)
 
@@ -116,4 +127,69 @@ class InternalAgentOutputCreateView(APIView):
         return Response(
             InternalAgentOutputCreateResponseSerializer(agent_output).data,
             status=status.HTTP_201_CREATED,
+        )
+
+
+class InternalReportRunCompleteView(APIView):
+    """Complete a report run and persist the final daily report payload."""
+
+    authentication_classes = [InternalAIAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, report_run_id):
+        serializer = InternalReportRunCompleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        tenant, store = resolve_tenant_and_store(request)
+        report_run = get_scoped_report_run(
+            tenant=tenant,
+            store=store,
+            report_run_id=report_run_id,
+        )
+        validated = serializer.validated_data
+
+        try:
+            daily_report = ReportRunService.complete_from_ai_payload(
+                report_run=report_run,
+                tenant=tenant,
+                store=store,
+                service_name=request.service_name,
+                report_payload=validated["report"],
+                agent_output_ids=validated.get("agent_output_ids"),
+                action_ids=validated.get("action_ids"),
+                metadata=validated.get("metadata"),
+            )
+        except ReportRunPermissionError as exc:
+            raise PermissionDenied(str(exc)) from exc
+        except ReportRunPayloadValidationError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
+        except ReportRunReferenceError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
+        except ReportRunTransitionError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
+        except ReportRunScopeError as exc:
+            raise NotFound(str(exc)) from exc
+
+        report_run.refresh_from_db()
+
+        logger.info(
+            "Completed report run id=%s daily_report_id=%s tenant_id=%s store_id=%s "
+            "service_name=%s duration_ms=%s",
+            report_run.id,
+            daily_report.id,
+            tenant.id,
+            store.id,
+            request.service_name,
+            (validated.get("metadata") or {}).get("duration_ms"),
+        )
+
+        response_data = {
+            "report_run_id": report_run.id,
+            "daily_report_id": daily_report.id,
+            "status": report_run.status,
+            "completed_at": report_run.updated_at,
+        }
+        return Response(
+            InternalReportRunCompleteResponseSerializer(response_data).data,
+            status=status.HTTP_200_OK,
         )

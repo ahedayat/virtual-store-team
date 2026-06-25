@@ -94,3 +94,17 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
+
+JWT_SERVICE_SECRET = os.environ.get("JWT_SERVICE_SECRET", "")
+JWT_SERVICE_AUDIENCE = os.environ.get("JWT_SERVICE_AUDIENCE", "ai-services")
+JWT_SERVICE_ALGORITHM = os.environ.get("JWT_SERVICE_ALGORITHM", "HS256")
+JWT_SERVICE_TOKEN_LIFETIME_MINUTES = int(
+    os.environ.get("JWT_SERVICE_TOKEN_LIFETIME_MINUTES", "30")
+)
+
+if not DEBUG and not JWT_SERVICE_SECRET:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "JWT_SERVICE_SECRET environment variable is required when DEBUG is False."
+    )

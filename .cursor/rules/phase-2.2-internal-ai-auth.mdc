@@ -1,0 +1,70 @@
+---
+description: Rules for Phase 2.2 - Internal AI service JWT authentication
+globs:
+  - "backend/**/*.py"
+  - ".env.example"
+  - "docs/phases/step-2.2.md"
+alwaysApply: false
+---
+
+# Phase 2.2 — Internal AI Authentication Rules
+
+This phase is limited to implementing the first version of internal AI service authentication for `/internal/ai/*` routes.
+
+## Scope
+
+- Implement `InternalAIAuthentication` for Django REST Framework.
+- Validate `Authorization: Bearer <service_jwt>`.
+- Decode and validate service JWT claims needed by AI services.
+- Attach service identity and tenant/store context to the request.
+- Add a minimal protected internal test endpoint to prove the authentication class works.
+- Add required environment variables to `.env.example`.
+- Document everything in `docs/phases/step-2.2.md`.
+
+## Required JWT claims
+
+- `sub`: service name
+- `tenant_id`
+- `store_id`
+- `iat`
+- `exp`
+- `aud`
+
+## Allowed service names
+
+- `coordinator-agent`
+- `sales-agent`
+- `content-agent`
+- `support-agent`
+
+## Security rules
+
+- Human dashboard authentication must not grant access to `/internal/ai/*`.
+- Session-authenticated users must not be accepted by internal AI routes.
+- Internal AI routes must use `InternalAIAuthentication` explicitly.
+- Do not allow anonymous access.
+- Do not hardcode Prestia-specific behavior.
+- Do not expose JWT secrets in logs, responses, or documentation.
+- Do not log raw token values.
+- Do not add direct database access for agents.
+- Do not implement Phase 3 internal commerce APIs in this step.
+
+## Boundary rules
+
+- Do not implement products, orders, reports, actions, PII sanitizer, or AI context APIs in this step.
+- Do not implement full token lifecycle tests from Phase 2.4 yet.
+- Do not overbuild service authorization policies beyond the minimal service identity validation needed now.
+- Keep the implementation small, testable, and consistent with the existing backend structure.
+
+## Documentation requirement
+
+Create `docs/phases/step-2.2.md` and include:
+
+- Implemented files
+- JWT claims
+- Environment variables
+- Protected test endpoint
+- Request examples
+- Response examples
+- Test instructions
+- Next steps for Phase 2.3

@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from catalog.models import Category, Order, OrderItem, OrderStatus, Product
+from catalog.models import Category, InventoryLevel, Order, OrderItem, OrderStatus, Product
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -144,6 +144,94 @@ PRESTIA_PRODUCTS = [
         "price": Decimal("99.00"),
         "image_url": "https://cdn.example.com/prestia/evening-clutch.jpg",
         "metadata": {"material": "satin", "color": "emerald"},
+    },
+]
+
+
+PRESTIA_INVENTORY = [
+  # Below threshold: available 3 < threshold 10
+    {
+        "sku": "PRS-TOTE-001",
+        "quantity_on_hand": 5,
+        "reserved_quantity": 2,
+        "low_stock_threshold": 10,
+        "reorder_target": 25,
+        "location_name": "Main Floor",
+    },
+    # Exactly at threshold: available 10 == threshold 10 (not low stock)
+    {
+        "sku": "PRS-CROSS-002",
+        "quantity_on_hand": 10,
+        "reserved_quantity": 0,
+        "low_stock_threshold": 10,
+        "reorder_target": 30,
+        "location_name": "Main Floor",
+    },
+    # Above threshold: available 45 > threshold 10
+    {
+        "sku": "PRS-SHLD-003",
+        "quantity_on_hand": 50,
+        "reserved_quantity": 5,
+        "low_stock_threshold": 10,
+        "reorder_target": 40,
+        "location_name": "Main Floor",
+    },
+    # Out of stock: available 0 < threshold 5
+    {
+        "sku": "PRS-BPK-004",
+        "quantity_on_hand": 0,
+        "reserved_quantity": 0,
+        "low_stock_threshold": 5,
+        "reorder_target": 20,
+        "location_name": "Backroom",
+    },
+    {
+        "sku": "PRS-BPK-005",
+        "quantity_on_hand": 18,
+        "reserved_quantity": 3,
+        "low_stock_threshold": 8,
+        "reorder_target": 25,
+        "location_name": "Main Floor",
+    },
+    {
+        "sku": "PRS-WLT-006",
+        "quantity_on_hand": 22,
+        "reserved_quantity": 0,
+        "low_stock_threshold": 12,
+        "reorder_target": 35,
+        "location_name": "Main Floor",
+    },
+    {
+        "sku": "PRS-WLT-007",
+        "quantity_on_hand": 4,
+        "reserved_quantity": 1,
+        "low_stock_threshold": 8,
+        "reorder_target": 20,
+        "location_name": "Main Floor",
+    },
+    {
+        "sku": "PRS-ACC-008",
+        "quantity_on_hand": 30,
+        "reserved_quantity": 2,
+        "low_stock_threshold": 15,
+        "reorder_target": 50,
+        "location_name": "Accessories Wall",
+    },
+    {
+        "sku": "PRS-ACC-009",
+        "quantity_on_hand": 2,
+        "reserved_quantity": 0,
+        "low_stock_threshold": 6,
+        "reorder_target": 18,
+        "location_name": "Accessories Wall",
+    },
+    {
+        "sku": "PRS-HB-010",
+        "quantity_on_hand": 7,
+        "reserved_quantity": 2,
+        "low_stock_threshold": 10,
+        "reorder_target": 20,
+        "location_name": "Main Floor",
     },
 ]
 
@@ -385,6 +473,26 @@ class Command(BaseCommand):
                 if item_created:
                     order_items_created += 1
 
+        inventory_created = 0
+        for inventory_data in PRESTIA_INVENTORY:
+            product = products_by_sku[inventory_data["sku"]]
+            _, created = InventoryLevel.objects.get_or_create(
+                tenant=tenant,
+                store=store,
+                product=product,
+                defaults={
+                    "quantity_on_hand": inventory_data["quantity_on_hand"],
+                    "reserved_quantity": inventory_data["reserved_quantity"],
+                    "low_stock_threshold": inventory_data["low_stock_threshold"],
+                    "reorder_target": inventory_data["reorder_target"],
+                    "location_name": inventory_data["location_name"],
+                    "is_active": True,
+                    "metadata": {"seed": "prestia"},
+                },
+            )
+            if created:
+                inventory_created += 1
+
         self.stdout.write(
             self.style.SUCCESS(
                 "Prestia seed complete: "
@@ -393,6 +501,7 @@ class Command(BaseCommand):
                 f"{categories_created} categories created, "
                 f"{products_created} products created, "
                 f"{orders_created} orders created, "
-                f"{order_items_created} order items created."
+                f"{order_items_created} order items created, "
+                f"{inventory_created} inventory levels created."
             )
         )

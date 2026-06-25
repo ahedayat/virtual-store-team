@@ -1,0 +1,156 @@
+---
+description: Rules for Step 3.3 - InventoryLevel model and low-stock internal AI API
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-3.3.md"
+alwaysApply: false
+---
+
+# Step 3.3 Rules — Low-Stock Inventory Query
+
+This rule applies only to Step 3.3 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement Phase 3.3 only:
+
+- Generic tenant/store-scoped inventory model if not already implemented
+- Low-stock query based on `inventory < threshold`
+- Internal AI-facing low-stock inventory endpoint
+- Prestia demo inventory seed data
+- Tests for tenant/store scoping, low-stock behavior, and internal API security
+- Documentation at `docs/phases/step-3.3.md`
+
+Do not implement message ingest models, PII sanitizer, full AI context endpoint, report/action models, Celery orchestration, agent logic, real stock synchronization, supplier purchasing, warehouse management, or external integrations in this step.
+
+## Architecture Rules
+
+- Django + Postgres remain the source of truth.
+- AI services must access inventory data only through Django internal APIs.
+- All inventory data must be tenant-scoped and store-scoped.
+- Reuse existing tenant/store abstractions, base models, internal AI authentication, serializers, URL conventions, admin conventions, seed command structure, and test patterns.
+- Do not introduce Prestia-specific application logic.
+- Prestia inventory must be normal seed/demo data only.
+
+## Data Modeling Rules
+
+- Prefer a generic model named `InventoryLevel` unless an equivalent model already exists.
+- InventoryLevel must belong to a tenant, store, and product.
+- The model should support the MVP low-stock query without overengineering warehouse or supplier workflows.
+- Suggested fields:
+  - id
+  - tenant
+  - store
+  - product
+  - quantity_on_hand
+  - reserved_quantity
+  - low_stock_threshold
+  - reorder_target or desired_stock_level if useful
+  - location_name or location_code optional for future flexibility
+  - is_active
+  - metadata JSON field if consistent with project conventions
+  - created_at / updated_at if the project uses timestamp fields
+- Available quantity should be calculated consistently, either as:
+  - `quantity_on_hand - reserved_quantity`
+  - or an explicit field if the existing project convention requires it.
+- Low-stock detection should use available quantity where possible:
+  - `available_quantity < low_stock_threshold`
+- Use integer fields for quantities.
+- Prevent negative inventory values unless the project intentionally allows overselling. For MVP, prefer non-negative quantities.
+- Enforce one active inventory record per product per store unless the project already supports multiple locations.
+
+## Query Rules
+
+The low-stock query should return products where available inventory is below the configured threshold.
+
+The response should include at least:
+
+- product_id
+- product_name/title
+- sku
+- category if available
+- quantity_on_hand
+- reserved_quantity
+- available_quantity
+- low_stock_threshold
+- shortage_units
+- reorder_target or suggested_reorder_quantity if available
+- last_updated
+- currency or price only if already available and useful
+- store_id
+- generated_at
+
+Do not include customer data or raw PII.
+
+## Internal API Rules
+
+- Add an internal AI endpoint similar to:
+  - `GET /internal/ai/stores/<store_id>/inventory/low-stock/`
+- The endpoint must require existing internal AI/service JWT authentication.
+- The endpoint must validate that the service JWT tenant_id and store_id match the requested store.
+- Cross-tenant or cross-store access must be rejected.
+- Missing/invalid service JWT must return 401.
+- The response must be stable and suitable for future sales-agent consumption.
+- The endpoint should support only read behavior in this step.
+
+## Seed Rules
+
+- Extend the existing `seed_prestia` command.
+- Reuse existing Prestia tenant, store, categories, products, and sales data.
+- Add inventory levels for Prestia products.
+- Include realistic stock variation:
+  - at least one product below threshold
+  - at least one product exactly at threshold
+  - at least one product above threshold
+  - optionally one out-of-stock product
+- The seed command must be idempotent.
+- Running it multiple times must not duplicate inventory records.
+
+## Admin Rules
+
+- Register InventoryLevel in Django admin if admin conventions support it.
+- Admin list views should include tenant, store, product, SKU, quantity, threshold, available quantity if possible, active status, and updated timestamp.
+- Admin filters should include tenant, store, product/category if practical, and active status.
+- Admin search should support product name/title and SKU.
+- Avoid complex stock adjustment workflows in this step.
+
+## Testing Rules
+
+Add focused tests for:
+
+- InventoryLevel creation under tenant/store scope
+- Available quantity calculation
+- Low-stock query returns only products below threshold
+- Products exactly at threshold are not returned if the rule is strictly `< threshold`
+- Inactive products or inactive inventory records are excluded if the model supports active flags
+- Internal low-stock endpoint requires service JWT
+- Internal low-stock endpoint accepts a valid service JWT
+- Internal low-stock endpoint rejects cross-tenant or cross-store access
+- Response contains no customer PII fields
+- `seed_prestia` creates inventory levels idempotently
+
+## Documentation Rules
+
+Create `docs/phases/step-3.3.md` and include:
+
+- Step title and goal
+- Summary of implemented changes
+- Files created/modified
+- InventoryLevel model design
+- Low-stock query rule
+- Available quantity calculation
+- Internal API endpoint contract
+- Example response shape
+- Tenant/store scoping decisions
+- Prestia inventory seed behavior
+- Tests added
+- How to run the seed command
+- How to run relevant tests
+- Explicit out-of-scope items deferred to later steps:
+  - message ingest model
+  - PII sanitizer
+  - full AI context endpoint
+  - reports/actions
+  - Celery orchestration
+  - agent implementation
+  - real external inventory sync

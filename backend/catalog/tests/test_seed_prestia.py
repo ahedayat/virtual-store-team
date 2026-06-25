@@ -1,7 +1,7 @@
 from django.core.management import call_command
 from django.test import TestCase
 
-from catalog.models import Category, Order, OrderItem, Product
+from catalog.models import Category, InventoryLevel, Order, OrderItem, Product
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -59,3 +59,29 @@ class SeedPrestiaCommandTests(TestCase):
 
         self.assertEqual(Order.objects.count(), order_count)
         self.assertEqual(OrderItem.objects.count(), order_item_count)
+
+    def test_seed_prestia_creates_inventory_levels(self):
+        call_command("seed_prestia")
+
+        tenant = Tenant.objects.get(slug="prestia")
+        store = Store.objects.get(tenant=tenant, slug="main")
+
+        self.assertEqual(
+            InventoryLevel.objects.filter(tenant=tenant, store=store).count(),
+            10,
+        )
+        tote = InventoryLevel.objects.get(
+            tenant=tenant,
+            store=store,
+            product__sku="PRS-TOTE-001",
+        )
+        self.assertEqual(tote.available_quantity, 3)
+        self.assertEqual(tote.low_stock_threshold, 10)
+
+    def test_seed_prestia_inventory_is_idempotent(self):
+        call_command("seed_prestia")
+        inventory_count = InventoryLevel.objects.count()
+
+        call_command("seed_prestia")
+
+        self.assertEqual(InventoryLevel.objects.count(), inventory_count)

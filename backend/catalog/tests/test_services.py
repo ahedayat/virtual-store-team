@@ -4,8 +4,8 @@ from zoneinfo import ZoneInfo
 
 from django.test import TestCase
 
-from catalog.models import Order, OrderItem, OrderStatus, Product
-from catalog.services import build_sales_summary, get_period_bounds
+from catalog.models import Category, InventoryLevel, Order, OrderItem, OrderStatus, Product
+from catalog.services import build_low_stock_summary, build_sales_summary, get_period_bounds
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -168,3 +168,145 @@ class SalesAggregationTests(TestCase):
         self.assertEqual(summary["generated_at"], self.reference.isoformat())
         self.assertIn("today", summary["periods"])
         self.assertIn("last_7_days", summary["periods"])
+
+
+class LowStockInventoryTests(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(slug="tenant-a", name="Tenant A")
+        self.store = Store.objects.create(
+            tenant=self.tenant,
+            name="Store A",
+            slug="store-a",
+            currency="USD",
+        )
+        self.category = Category.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            name="Handbags",
+            slug="handbags",
+        )
+        self.product_below = Product.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            category=self.category,
+            name="Below Threshold",
+            slug="below-threshold",
+            sku="SKU-LOW",
+            price=Decimal("50.00"),
+        )
+        self.product_at = Product.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            name="At Threshold",
+            slug="at-threshold",
+            sku="SKU-AT",
+            price=Decimal("50.00"),
+        )
+        self.product_above = Product.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            name="Above Threshold",
+            slug="above-threshold",
+            sku="SKU-HIGH",
+            price=Decimal("50.00"),
+        )
+        self.product_inactive = Product.objects.create(
+            tenant=self.tenant,
+            store=self.store,
+            name="Inactive Product",
+            slug="inactive-product",
+            sku="SKU-INACTIVE",
+            price=Decimal("50.00"),
+            is_active=False,
+        )
+
+    def _create_inventory(self, product, **kwargs):
+        defaults = {
+            "tenant": self.tenant,
+            "store": self.store,
+            "quantity_on_hand": 10,
+            "reserved_quantity": 0,
+            "low_stock_threshold": 10,
+            "is_active": True,
+        }
+        defaults.update(kwargs)
+        return InventoryLevel.objects.create(product=product, **defaults)
+
+    def test_low_stock_returns_only_products_below_threshold(self):
+        self._create_inventory(
+            self.product_below,
+            quantity_on_hand=5,
+            reserved_quantity=1,
+            low_stock_threshold=10,
+            reorder_target=20,
+        )
+        self._create_inventory(
+            self.product_at,
+            quantity_on_hand=10,
+            reserved_quantity=0,
+            low_stock_threshold=10,
+        )
+        self._create_inventory(
+            self.product_above,
+            quantity_on_hand=25,
+            reserved_quantity=0,
+            low_stock_threshold=10,
+        )
+
+        summary = build_low_stock_summary(self.store)
+        skus = {item["sku"] for item in summary["items"]}
+
+        self.assertEqual(summary["low_stock_count"], 1)
+        self.assertEqual(skus, {"SKU-LOW"})
+        item = summary["items"][0]
+        self.assertEqual(item["available_quantity"], 4)
+        self.assertEqual(item["shortage_units"], 6)
+        self.assertEqual(item["suggested_reorder_quantity"], 16)
+
+    def test_product_exactly_at_threshold_is_not_returned(self):
+        self._create_inventory(
+            self.product_at,
+            quantity_on_hand=10,
+            reserved_quantity=0,
+            low_stock_threshold=10,
+        )
+
+        summary = build_low_stock_summary(self.store)
+
+        self.assertEqual(summary["low_stock_count"], 0)
+        self.assertEqual(summary["items"], [])
+
+    def test_product_above_threshold_is_not_returned(self):
+        self._create_inventory(
+            self.product_above,
+            quantity_on_hand=30,
+            reserved_quantity=5,
+            low_stock_threshold=10,
+        )
+
+        summary = build_low_stock_summary(self.store)
+
+        self.assertEqual(summary["low_stock_count"], 0)
+
+    def test_inactive_inventory_records_are_excluded(self):
+        self._create_inventory(
+            self.product_below,
+            quantity_on_hand=2,
+            low_stock_threshold=10,
+            is_active=False,
+        )
+
+        summary = build_low_stock_summary(self.store)
+
+        self.assertEqual(summary["low_stock_count"], 0)
+
+    def test_inactive_products_are_excluded(self):
+        self._create_inventory(
+            self.product_inactive,
+            quantity_on_hand=1,
+            low_stock_threshold=10,
+        )
+
+        summary = build_low_stock_summary(self.store)
+
+        self.assertEqual(summary["low_stock_count"], 0)

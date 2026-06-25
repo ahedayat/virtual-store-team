@@ -235,3 +235,67 @@ class OrderItem(TenantScopedModel):
 
     def __str__(self):
         return f"{self.sku_snapshot} x{self.quantity} ({self.order.order_number})"
+
+
+class InventoryLevel(TenantScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.PROTECT,
+        related_name="inventory_levels",
+    )
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="inventory_levels",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="inventory_levels",
+    )
+    quantity_on_hand = models.PositiveIntegerField(default=0)
+    reserved_quantity = models.PositiveIntegerField(default=0)
+    low_stock_threshold = models.PositiveIntegerField()
+    reorder_target = models.PositiveIntegerField(null=True, blank=True)
+    location_name = models.CharField(max_length=127, blank=True)
+    is_active = models.BooleanField(default=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["product__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "store", "product"],
+                name="catalog_inventory_unique_tenant_store_product",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["tenant", "store", "is_active"],
+                name="cat_inv_tnt_store_active",
+            ),
+            models.Index(
+                fields=["tenant", "store", "product"],
+                name="cat_inv_tnt_store_product",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.store_id and self.tenant_id and self.store.tenant_id != self.tenant_id:
+            raise ValidationError({"store": "Store must belong to the same tenant."})
+        if self.product_id and self.store_id and self.product.store_id != self.store_id:
+            raise ValidationError({"product": "Product must belong to the same store."})
+        if self.reserved_quantity > self.quantity_on_hand:
+            raise ValidationError(
+                {"reserved_quantity": "Reserved quantity cannot exceed quantity on hand."}
+            )
+
+    @property
+    def available_quantity(self):
+        return self.quantity_on_hand - self.reserved_quantity
+
+    def __str__(self):
+        return f"{self.product.sku} ({self.available_quantity} available)"

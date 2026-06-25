@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from catalog.models import Category, Order, OrderItem, Product
+from catalog.models import Category, InventoryLevel, Order, OrderItem, Product
 
 
 class OrderItemInline(admin.TabularInline):
@@ -49,6 +49,40 @@ class ProductAdmin(admin.ModelAdmin):
     )
     ordering = ("tenant", "store", "name")
     readonly_fields = ("id",)
+
+
+@admin.register(InventoryLevel)
+class InventoryLevelAdmin(admin.ModelAdmin):
+    list_display = (
+        "product",
+        "sku_display",
+        "tenant",
+        "store",
+        "quantity_on_hand",
+        "reserved_quantity",
+        "available_quantity_display",
+        "low_stock_threshold",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("tenant", "store", "is_active", "product__category")
+    search_fields = (
+        "product__name",
+        "product__sku",
+        "location_name",
+        "tenant__name",
+        "tenant__slug",
+    )
+    ordering = ("tenant", "store", "product__name")
+    readonly_fields = ("id", "available_quantity_display", "updated_at")
+
+    @admin.display(description="SKU")
+    def sku_display(self, obj):
+        return obj.product.sku
+
+    @admin.display(description="Available")
+    def available_quantity_display(self, obj):
+        return obj.available_quantity
 
 
 @admin.register(Order)

@@ -8,7 +8,9 @@ from zoneinfo import ZoneInfo
 from django.db.models import Sum
 from django.utils import timezone
 
-from catalog.models import Order, OrderItem, REVENUE_COUNTABLE_ORDER_STATUSES
+from django.db.models import F
+
+from catalog.models import InventoryLevel, Order, OrderItem, REVENUE_COUNTABLE_ORDER_STATUSES
 from stores.models import Store
 
 
@@ -129,4 +131,61 @@ def build_sales_summary(store: Store, reference: datetime | None = None) -> dict
             "today": _serialize_period(store, bounds["today"]),
             "last_7_days": _serialize_period(store, bounds["last_7_days"]),
         },
+    }
+
+
+def _serialize_low_stock_item(inventory: InventoryLevel, *, available_quantity: int) -> dict:
+    shortage_units = max(0, inventory.low_stock_threshold - available_quantity)
+    reorder_target = inventory.reorder_target
+    suggested_reorder_quantity = None
+    if reorder_target is not None:
+        suggested_reorder_quantity = max(0, reorder_target - available_quantity)
+
+    product = inventory.product
+    return {
+        "product_id": str(product.id),
+        "product_name": product.name,
+        "sku": product.sku,
+        "category": product.category.name if product.category_id else None,
+        "quantity_on_hand": inventory.quantity_on_hand,
+        "reserved_quantity": inventory.reserved_quantity,
+        "available_quantity": available_quantity,
+        "low_stock_threshold": inventory.low_stock_threshold,
+        "shortage_units": shortage_units,
+        "reorder_target": reorder_target,
+        "suggested_reorder_quantity": suggested_reorder_quantity,
+        "last_updated": inventory.updated_at.isoformat(),
+    }
+
+
+def build_low_stock_summary(store: Store, reference: datetime | None = None) -> dict:
+    """Return products where available quantity is strictly below the low-stock threshold."""
+    low_stock_qs = (
+        InventoryLevel.objects.filter(
+            tenant=store.tenant,
+            store=store,
+            is_active=True,
+            product__is_active=True,
+        )
+        .select_related("product", "product__category")
+        .annotate(available_qty=F("quantity_on_hand") - F("reserved_quantity"))
+        .filter(available_qty__lt=F("low_stock_threshold"))
+        .order_by("available_qty", "product__name")
+    )
+
+    items = [
+        _serialize_low_stock_item(
+            inventory,
+            available_quantity=inventory.available_qty,
+        )
+        for inventory in low_stock_qs
+    ]
+
+    generated_at = (reference or timezone.now()).isoformat()
+
+    return {
+        "generated_at": generated_at,
+        "store_id": str(store.id),
+        "low_stock_count": len(items),
+        "items": items,
     }

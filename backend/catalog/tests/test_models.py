@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.db import IntegrityError
 from django.test import TestCase
 
-from catalog.models import Category, Order, OrderItem, OrderStatus, Product
+from catalog.models import Category, InventoryLevel, Order, OrderItem, OrderStatus, Product
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -278,4 +278,69 @@ class OrderModelTests(TestCase):
                 subtotal_amount=Decimal("20.00"),
                 discount_amount=Decimal("0.00"),
                 total_amount=Decimal("20.00"),
+            )
+
+
+class InventoryLevelModelTests(TestCase):
+    def setUp(self):
+        self.tenant_a = Tenant.objects.create(slug="tenant-a", name="Tenant A")
+        self.store_a = Store.objects.create(
+            tenant=self.tenant_a,
+            name="Store A",
+            slug="store-a",
+            currency="USD",
+        )
+        self.product = Product.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            name="Leather Tote",
+            slug="leather-tote",
+            sku="SKU-001",
+            price=Decimal("100.00"),
+        )
+
+    def test_create_inventory_level_for_tenant_store(self):
+        inventory = InventoryLevel.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            product=self.product,
+            quantity_on_hand=20,
+            reserved_quantity=5,
+            low_stock_threshold=10,
+            reorder_target=40,
+        )
+
+        self.assertEqual(inventory.tenant_id, self.tenant_a.id)
+        self.assertEqual(inventory.store_id, self.store_a.id)
+        self.assertEqual(inventory.product_id, self.product.id)
+        self.assertTrue(inventory.is_active)
+
+    def test_available_quantity_is_calculated_correctly(self):
+        inventory = InventoryLevel.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            product=self.product,
+            quantity_on_hand=20,
+            reserved_quantity=5,
+            low_stock_threshold=10,
+        )
+
+        self.assertEqual(inventory.available_quantity, 15)
+
+    def test_inventory_unique_per_product_per_store(self):
+        InventoryLevel.objects.create(
+            tenant=self.tenant_a,
+            store=self.store_a,
+            product=self.product,
+            quantity_on_hand=10,
+            low_stock_threshold=5,
+        )
+
+        with self.assertRaises(IntegrityError):
+            InventoryLevel.objects.create(
+                tenant=self.tenant_a,
+                store=self.store_a,
+                product=self.product,
+                quantity_on_hand=5,
+                low_stock_threshold=3,
             )

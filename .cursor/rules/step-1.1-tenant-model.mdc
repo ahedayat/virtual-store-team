@@ -1,0 +1,67 @@
+---
+description: Step 1.1 Tenant model implementation scope
+globs:
+  - "backend/**"
+  - "docs/phases/step-1.1.md"
+alwaysApply: false
+---
+
+# Step 1.1 — Tenant Model Scope Rule
+
+This rule applies only while implementing Phase 1, Step 1.1.
+
+## Goal
+
+Implement only the foundational `Tenant` model for the multi-tenant SaaS backend.
+
+## Allowed work
+
+* Create or update the Django `tenants` app if it does not already exist.
+* Define the `Tenant` model with:
+
+  * `id`
+  * `slug`
+  * `name`
+  * `settings` JSON field
+  * timestamp fields if the project already uses timestamp conventions, or if they are useful and documented.
+* Register `Tenant` in Django admin.
+* Add the `tenants` app to Django settings if needed.
+* Create the initial migration for the `Tenant` model.
+* Add focused tests for the `Tenant` model only.
+* Write implementation documentation at `docs/phases/step-1.1.md`.
+
+## Explicitly out of scope
+
+Do not implement these in Step 1.1:
+
+* `Store` model
+* custom `User` model
+* `TenantMiddleware`
+* `TenantScopedModel`
+* `seed_prestia` command
+* service JWT authentication
+* internal AI APIs
+* cross-tenant queryset filtering
+* dashboard APIs
+* any Prestia-specific business logic
+
+## Design constraints
+
+* The model must remain generic and SaaS-ready.
+* Do not hardcode Prestia in the model, admin, tests, or settings.
+* `settings` must be a JSON field with a safe default.
+* `slug` must be unique and suitable for stable tenant lookup.
+* Keep the implementation minimal, migration-safe, and easy to extend in later steps.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.1.md` and include:
+
+* Step goal
+* Scope implemented
+* Files changed
+* Tenant model fields and rationale
+* Migration summary
+* Test summary and commands
+* Explicit out-of-scope items
+* Notes for Step 1.2

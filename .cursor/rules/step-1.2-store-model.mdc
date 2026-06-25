@@ -1,0 +1,73 @@
+---
+description: Step 1.2 Store model implementation scope
+globs:
+  - "backend/**"
+  - "docs/phases/step-1.2.md"
+alwaysApply: false
+---
+
+# Step 1.2 — Store Model Scope Rule
+
+This rule applies only while implementing Phase 1, Step 1.2.
+
+## Goal
+
+Implement the foundational `Store` model linked to the existing `Tenant` model.
+
+## Allowed work
+
+* Create or update the Django `stores` app if it does not already exist.
+* Define the `Store` model with:
+
+  * `id`
+  * `tenant`
+  * `name`
+  * `slug`
+  * `timezone`
+  * `currency`
+  * timestamp fields only if consistent with the existing project conventions.
+* Register `Store` in Django admin.
+* Add the `stores` app to Django settings if needed.
+* Create migrations for the `Store` model.
+* Add focused tests for the `Store` model only.
+* Write implementation documentation at `docs/phases/step-1.2.md`.
+
+## Explicitly out of scope
+
+Do not implement these in Step 1.2:
+
+* custom `User` model
+* `TenantMiddleware`
+* `TenantScopedModel`
+* automatic tenant queryset filtering
+* `seed_prestia` command
+* service JWT authentication
+* internal AI APIs
+* dashboard APIs
+* product, order, inventory, message, report, action, or agent models
+* any Prestia-specific business logic or hardcoded Prestia data
+
+## Design constraints
+
+* `Store` must belong to `Tenant`.
+* Store slugs should be unique per tenant, not necessarily globally unique.
+* The model must remain generic and SaaS-ready.
+* Do not hardcode Prestia, bag-store assumptions, Instagram handles, or demo data.
+* Use stable, explicit field definitions suitable for future store-scoped data.
+* Keep the implementation minimal, migration-safe, and easy to extend in later steps.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.2.md` and include:
+
+* Step goal
+* Scope implemented
+* Files changed
+* Store model fields and rationale
+* Tenant relationship design
+* Slug uniqueness decision
+* Admin registration summary
+* Migration summary
+* Test summary and commands
+* Explicit out-of-scope items
+* Notes for Step 1.3

@@ -13,8 +13,16 @@ class ServiceJWTError(Exception):
     """Base error for service JWT validation failures."""
 
 
+class ExpiredServiceJWTError(ServiceJWTError):
+    """Raised when the token exp claim is in the past."""
+
+
+class InvalidServiceJWTAudienceError(ServiceJWTError):
+    """Raised when the token aud claim does not match the expected audience."""
+
+
 class InvalidServiceJWTError(ServiceJWTError):
-    """Raised when a token is missing claims, expired, or cryptographically invalid."""
+    """Raised when a token is malformed, wrongly signed, or missing required claims."""
 
 
 class UnknownServiceError(ServiceJWTError):
@@ -46,15 +54,15 @@ def decode_service_jwt(token: str) -> dict:
             options={"require": list(REQUIRED_CLAIMS)},
         )
     except jwt.ExpiredSignatureError as exc:
-        raise InvalidServiceJWTError("Token has expired.") from exc
+        raise ExpiredServiceJWTError from exc
     except jwt.InvalidAudienceError as exc:
-        raise InvalidServiceJWTError("Invalid token audience.") from exc
+        raise InvalidServiceJWTAudienceError from exc
     except jwt.InvalidTokenError as exc:
-        raise InvalidServiceJWTError("Invalid token.") from exc
+        raise InvalidServiceJWTError from exc
 
     service_name = claims.get("sub")
     if service_name not in ALLOWED_AI_SERVICES:
-        raise UnknownServiceError("Unknown or disallowed service identity.")
+        raise UnknownServiceError
 
     return claims
 
@@ -69,7 +77,7 @@ def mint_service_jwt(
 ) -> str:
     """Mint a short-lived service JWT. Intended for tests and future Celery issuance."""
     if service_name not in ALLOWED_AI_SERVICES:
-        raise UnknownServiceError("Unknown or disallowed service identity.")
+        raise UnknownServiceError
 
     secret = _require_service_secret()
     algorithm = settings.JWT_SERVICE_ALGORITHM

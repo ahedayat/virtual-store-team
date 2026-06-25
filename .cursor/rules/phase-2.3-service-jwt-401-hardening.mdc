@@ -1,0 +1,60 @@
+---
+description: Rules for Phase 2.3 - Service JWT 401 hardening
+globs:
+  - "backend/**/*.py"
+  - ".env.example"
+  - "docs/phases/step-2.3.md"
+alwaysApply: false
+---
+
+# Phase 2.3 — Service JWT 401 Hardening Rules
+
+This phase is limited to **service JWT rejection and error hardening** for `/internal/ai/*` routes.
+
+## Scope
+
+- Harden `InternalAIAuthentication` and `decode_service_jwt` failure behavior.
+- Ensure **expired** service JWTs return HTTP **401 Unauthorized**.
+- Ensure **wrong-audience** service JWTs return HTTP **401 Unauthorized**.
+- Ensure **malformed**, **invalid-signature**, **missing-claim**, and **unknown-service** tokens return HTTP **401 Unauthorized**.
+- Map all JWT validation failures to safe, consistent API error responses.
+- Add focused tests proving 401 rejection behavior.
+- Document the step at `docs/phases/step-2.3.md`.
+
+## Required safe response messages
+
+| Failure | `detail` message |
+|---------|------------------|
+| Expired token | `Internal service token has expired.` |
+| Wrong audience | `Invalid internal service token audience.` |
+| Other invalid token | `Invalid internal service token.` |
+
+## Security rules
+
+- Do **not** leak token values, signing secrets, stack traces, or low-level JWT library details in API responses or logs.
+- Do **not** log raw token values.
+- Human dashboard/session authentication must **not** grant access to internal AI routes.
+- Internal AI routes must use `InternalAIAuthentication` explicitly — not global default auth.
+- Authentication failures must return **401**, not **403**, unless the project has a documented exception.
+
+## Boundary rules
+
+- Do **not** implement Phase 2.4 full token mint/verify lifecycle tests (only narrow tests needed to prove 401 behavior).
+- Do **not** implement Phase 3 business or internal commerce APIs.
+- Do **not** implement Product, Order, ReportRun, Action, AgentOutput, PII sanitizer, or AI context endpoints.
+- Do **not** add direct database access for agents.
+- Do **not** hardcode Prestia-specific logic.
+
+## Documentation requirement
+
+Create `docs/phases/step-2.3.md` and include:
+
+- Step title and goal
+- Scope and explicit non-goals
+- Files changed
+- JWT failure cases covered
+- Expected 401 behavior with example responses
+- Notes about not leaking secrets or raw token values
+- Tests added and how to run them
+- Known limitations
+- Next steps for Phase 2.4

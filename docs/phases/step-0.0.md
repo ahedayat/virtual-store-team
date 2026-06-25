@@ -1,0 +1,1333 @@
+# Step 0.0 — MVP Phase Planning Document
+
+**Project:** Agentic AI Virtual Store Management Team (SaaS)  
+**Document version:** 0.0  
+**Status:** Planning only — no implementation in this step  
+**First tenant (demo):** Prestia (online bag store)  
+**Target:** Small, modular, end-to-end MVP with clean service boundaries
+
+---
+
+## 1. Product Summary
+
+We are building a **multi-tenant SaaS platform** that acts as a virtual AI operations team for small online stores. A store manager uses a web dashboard to:
+
+- Trigger a **manual daily briefing** on demand
+- Review outputs from specialized AI agents
+- See **prioritized action recommendations**
+- **Approve or reject** actions that require human oversight
+- Browse **history** of reports, agent outputs, and action outcomes
+
+The system is **not tied to Prestia**. Prestia is the first real tenant and demo customer, but all domain models, APIs, and agent logic must be **generic and tenant-scoped**. Future stores onboard as new tenants without code changes to core platform logic.
+
+**MVP success:** A manager opens the dashboard, clicks “Generate daily report,” Django prepares tenant store data, the coordinator agent orchestrates sales/content/support agents via LangGraph, agents return structured outputs through Django APIs only, the coordinator produces a readable daily report, and the dashboard shows the report plus actionable items with correct approval states.
+
+---
+
+## 2. Architecture Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Store Manager (Browser)                          │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │ HTTPS
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  nginx  →  Next.js Frontend  →  Django REST API  (source of truth)    │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │
+          ┌───────────────────────┼───────────────────────┐
+          │                       │                       │
+          ▼                       ▼                       ▼
+    ┌──────────┐            ┌──────────┐            ┌──────────────┐
+    │ Postgres │            │  Redis   │            │ Celery worker│
+    │          │            │          │            │ + Celery beat│
+    └──────────┘            └──────────┘            └──────────────┘
+                                  │
+                                  │ async jobs (report runs, integrations)
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│              FastAPI AI Microservices (JWT → Django APIs only)           │
+│  ┌─────────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐ │
+│  │ coordinator     │  │ sales-agent │  │content-agent│  │support-agent│ │
+│  │ (LangGraph)     │  │             │  │             │  │             │ │
+│  └────────┬────────┘  └──────┬──────┘  └──────┬──────┘  └──────┬─────┘ │
+│           └──────────────────┴────────────────┴────────────────┘       │
+│                    HTTP between agents (orchestrated by coordinator)      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+                         External LLM provider(s)
+                         (abstracted — not hardcoded)
+```
+
+**Principles:**
+
+| Principle | Rule |
+|-----------|------|
+| Source of truth | Django + Postgres only |
+| AI data access | Django internal APIs with JWT service auth — **no direct DB from agents** |
+| Service boundaries | One FastAPI container per agent; coordinator is its own service |
+| Orchestration | LangGraph inside coordinator-agent |
+| Human in the loop | Manager above agents; approval workflow enforced in Django |
+| Multi-tenancy | Every request and record is tenant-scoped from day one |
+| PII | Masked/filtered before any LLM call |
+
+---
+
+## 3. Main Services and Responsibilities
+
+### 3.1 Django Backend (`backend`)
+
+| Area | Responsibility |
+|------|----------------|
+| SaaS core | Tenants, stores, users, teams, roles, permissions |
+| Business logic | Action lifecycle, approvals, audit/history |
+| Data | Sales, orders, inventory, products, categories, messages (tenant data) |
+| Integrations | Instagram DM ingestion (MVP: webhook/polling stub or minimal real hook) |
+| Internal APIs | Read-only and write endpoints for AI services (scoped by tenant + service identity) |
+| Public APIs | Dashboard-facing REST/JSON for Next.js (session or token auth) |
+| Async dispatch | Enqueue Celery tasks for long-running workflows |
+| PII gateway | Central place to sanitize payloads before they leave for AI services |
+
+### 3.2 Next.js Frontend (`frontend`)
+
+| Area | Responsibility |
+|------|----------------|
+| Dashboard | Reports, agent outputs, actions, history |
+| Actions UI | Approve/reject, view status and agent attribution |
+| Triggers | Manual “Generate daily report” button |
+| Auth UX | Login, tenant context (implicit via user) |
+| i18n display | Show Persian content by default; UI chrome can follow `AI_OUTPUT_LANGUAGE` or separate UI locale later |
+
+### 3.3 FastAPI AI Microservices
+
+Each service: health check, LangGraph (where applicable), LLM calls via shared abstraction library, HTTP client to Django internal APIs.
+
+| Service | Role |
+|---------|------|
+| `coordinator-agent` | LangGraph workflow; delegates to other agents; merges outputs; writes final report payload back via Django |
+| `sales-agent` | Sales/inventory analysis; structured action recommendations |
+| `content-agent` | Instagram captions, product copy, campaign text |
+| `support-agent` | Instagram DM analysis and safe reply drafts; scoped support actions |
+
+### 3.4 Infrastructure Services
+
+| Service | Role |
+|---------|------|
+| `postgres` | Primary persistence |
+| `redis` | Celery broker + optional short-lived workflow state cache |
+| `celery-worker` | Async task execution |
+| `celery-beat` | Scheduler placeholder (minimal jobs in MVP; room for future scheduled reports) |
+| `nginx` | Reverse proxy, TLS termination (dev: single entrypoint) |
+
+---
+
+## 4. Multi-Tenant SaaS Boundaries
+
+### 4.1 Core Entities (conceptual)
+
+```
+Tenant
+  └── Store(s)          # MVP: one store per tenant is enough
+        └── Users (manager, staff)
+        └── Products, Orders, Inventory, Messages, ...
+        └── DailyReports, AgentRuns, Actions
+```
+
+### 4.2 Isolation Rules
+
+1. **Every table** that holds business data includes `tenant_id` (and usually `store_id`).
+2. **Django middleware / queryset managers** enforce tenant filtering on all ORM access.
+3. **JWT for AI services** embeds `tenant_id`, `store_id`, and `service_name` (e.g. `sales-agent`). Django rejects cross-tenant IDs in URLs or body.
+4. **No Prestia-specific tables or branches.** Prestia is seeded as `Tenant(slug='prestia')` with demo data.
+5. **Per-tenant configuration** (output language, integration credentials, approval policies) lives in Django models or encrypted settings — not in agent code.
+
+### 4.3 What “generic” means for Prestia
+
+- Product categories, Instagram handle, and bag-specific copy are **tenant data**, not hardcoded constants in agents.
+- Agents receive **structured context** from Django APIs (product list, sales aggregates) without knowing the tenant brand name unless provided as data field `store_display_name`.
+
+---
+
+## 5. Agent Responsibilities and Boundaries
+
+### 5.1 Coordinator Agent
+
+**May:**
+
+- Start daily report workflow
+- Call sales, content, support agents (HTTP)
+- Aggregate and normalize agent JSON outputs
+- Produce final daily report document (sections, priorities, next steps)
+- Request Django to persist report and proposed actions
+
+**May not:**
+
+- Bypass approval rules (e.g. auto-execute approval-required actions)
+- Query database directly
+- Perform sales analysis, content writing, or customer replies itself (delegates only)
+- Access PII beyond what Django APIs already sanitized
+
+### 5.2 Sales Analyst Agent
+
+**May:**
+
+- Analyze sales/inventory data from Django APIs
+- Emit structured recommendations: restock, discount, follow-up, prioritize SKU
+- Assign priority scores and rationale (non-PII)
+
+**May not:**
+
+- Post to Instagram, reply to customers, or change prices in external systems without going through Django action workflow
+- Access raw customer PII for LLM reasoning
+
+### 5.3 Content Agent
+
+**May:**
+
+- Generate Instagram captions, product descriptions, campaign snippets
+- Propose content actions (e.g. “post draft ready for review”)
+
+**May not:**
+
+- Publish to Instagram automatically in MVP (draft/recommendation only unless explicit auto action type exists and is approved)
+- Scrape competitor websites in MVP (architecture note only for future)
+- Handle support conversations
+
+### 5.4 Support Agent
+
+**May:**
+
+- Read sanitized message threads from Django
+- Draft safe replies
+- Propose support actions with correct approval class
+
+**May not:**
+
+- Issue refunds, change orders, or share sensitive data in replies
+- Perform sales or marketing tasks
+- Send messages without Django recording action + approval state
+
+### 5.5 Cross-Agent Rules
+
+- Agents communicate **only** via coordinator orchestration or explicit HTTP agent-to-agent calls initiated by coordinator (MVP: prefer **star topology** — coordinator calls each agent; avoid agent mesh complexity).
+- Each agent returns **JSON schema-validated** payloads.
+- Out-of-scope requests return a structured `scope_violation` error to coordinator.
+
+---
+
+## 6. Data Flow Between Django and AI Services
+
+### 6.1 High-Level Daily Report Data Flow
+
+```
+1. Manager → Frontend → Django: POST /api/reports/generate/
+2. Django: create ReportRun(status=queued), enqueue Celery task
+3. Celery worker:
+   a. Build sanitized context bundle (sales, inventory, messages summary)
+   b. Mint short-lived service JWT (tenant + store + coordinator scope)
+   c. POST coordinator-agent /workflows/daily-report { report_run_id, context_ref }
+4. Coordinator (LangGraph):
+   a. Fetch full context from Django: GET /internal/ai/context/{report_run_id}/
+   b. Parallel node calls: sales-agent, content-agent, support-agent
+   c. Each agent: GET subset endpoints, run LLM, return structured output to coordinator
+   d. Coordinator merges → POST /internal/ai/report-runs/{id}/complete/
+5. Django: persist AgentOutputs, create Action records, set ReportRun=completed
+6. Frontend polls or receives websocket (MVP: polling) → display report
+```
+
+### 6.2 Django Internal API Categories (for AI services)
+
+| Category | Example endpoints (illustrative) | Notes |
+|----------|-------------------------------|-------|
+| Context | `GET /internal/ai/context/{report_run_id}/` | Pre-assembled, PII-safe bundle |
+| Sales | `GET /internal/ai/stores/{store_id}/sales/summary/` | Aggregates only |
+| Inventory | `GET /internal/ai/stores/{store_id}/inventory/low-stock/` | SKU-level, no customer data |
+| Products | `GET /internal/ai/stores/{store_id}/products/` | Metadata, image URLs |
+| Messages | `GET /internal/ai/stores/{store_id}/messages/recent/` | Sanitized threads |
+| Actions write | `POST /internal/ai/actions/` | Agents propose actions |
+| Report complete | `POST /internal/ai/report-runs/{id}/complete/` | Final report payload |
+| Agent output | `POST /internal/ai/agent-outputs/` | Per-agent raw structured output |
+
+All endpoints require `Authorization: Bearer <service_jwt>` and validate tenant/store match.
+
+### 6.3 Data Django Sends vs. Withholds
+
+| Sent to AI (sanitized) | Never sent to LLM |
+|------------------------|-------------------|
+| Aggregated sales by SKU/period | Full customer names (use “Customer #1234”) |
+| Product titles, categories, prices | Phone, email, address |
+| Inventory counts | Payment card data |
+| Message text with PII redacted | Government IDs |
+| Order status counts | Raw Instagram user IDs if policy requires masking |
+| Historical action summaries | Unredacted DM attachments with embedded PII |
+
+---
+
+## 7. Authentication and Security Plan
+
+### 7.1 Human Users (Dashboard)
+
+| Item | MVP approach |
+|------|----------------|
+| Auth | Django session or JWT (access + refresh) issued by Django |
+| Tenant binding | User belongs to one `Tenant`; optional `Store` scope for staff |
+| Permissions | Role-based: `manager` (approve actions, trigger reports), `viewer` (read-only) — MVP can start with manager-only |
+| Frontend | Next.js calls Django API with httpOnly cookie or Bearer token |
+
+### 7.2 Service-to-Service (Django ↔ AI agents)
+
+| Item | MVP approach |
+|------|----------------|
+| Mechanism | JWT signed by Django (`HS256` or `RS256` with shared secret/key in env) |
+| Claims | `sub` (service name), `tenant_id`, `store_id`, `report_run_id` (optional), `exp`, `iat`, `aud=ai-services` |
+| Issuance | Django Celery task mints token per workflow run (short TTL: 15–30 min) |
+| Validation | Each FastAPI service validates signature, audience, expiry; forwards token to Django on API calls |
+| Rotation | `JWT_SERVICE_SECRET` in env; document rotation procedure (no code in MVP) |
+
+### 7.3 Agent-to-Agent
+
+- MVP: Agents do not call each other directly; coordinator holds token and calls agents.
+- Agent endpoints protected by shared internal network + optional `X-Internal-Service` header check.
+
+### 7.4 Tenant Isolation
+
+- DB: composite indexes on `(tenant_id, id)`; middleware sets `request.tenant` from user or JWT.
+- AI context endpoint returns **404** if `report_run_id` does not belong to JWT tenant (no information leakage).
+
+### 7.5 Permission Boundaries
+
+| Actor | Can approve actions | Can trigger report | Can call internal AI APIs |
+|-------|--------------------|--------------------|---------------------------|
+| Manager user | Yes | Yes | No |
+| AI service | No | No | Yes (scoped) |
+| Coordinator | No | No | Yes (write report/actions) |
+
+### 7.6 Minimal Security Baseline
+
+- HTTPS via nginx in compose (self-signed dev cert acceptable)
+- Secrets in `.env` (not committed); `.env.example` documents keys
+- CORS restricted to frontend origin
+- Rate limit report generation (e.g. 1 concurrent run per store) in Django
+- Audit log table for approve/reject and action state changes
+
+---
+
+## 8. PII Handling Plan
+
+### 8.1 Policy
+
+**No raw PII in LLM prompts.** Django is responsible for redaction **before** data crosses the AI boundary.
+
+### 8.2 MVP Redaction Pipeline (Django)
+
+```
+Raw DB record → PiiSanitizer (rules engine) → AI-safe DTO → JSON to agents
+```
+
+**Techniques:**
+
+| Data type | Treatment |
+|-----------|-----------|
+| Phone numbers | Replace with `[PHONE_REDACTED]` or hash token `phone_hash_abc` |
+| Email | Replace with `customer_<id>@redacted.local` |
+| Physical address | Omit or replace with city-level only if needed for ops |
+| Customer display name | `Customer #<internal_id>` |
+| Instagram handle | Optional: keep public handle if business context requires; configurable per tenant |
+| Message body | Regex + library pass (phones, emails, URLs with tokens) |
+
+### 8.3 Support Agent Specifics
+
+- Draft replies must not invent account details or promise refunds unless backed by order facts from API.
+- Replies referencing order status use opaque `order_ref` not full customer name.
+
+### 8.4 Logging
+
+- Celery and agent logs must not dump full API responses; log `report_run_id`, `tenant_id`, durations, error codes only.
+- Separate `pii_access_log` optional in MVP — at minimum, document “no PII in logs.”
+
+### 8.5 Verification
+
+- Phase acceptance: unit tests on `PiiSanitizer` with Persian and Latin phone/email patterns.
+- Manual checklist: inspect coordinator context JSON before LLM call in dev tools.
+
+---
+
+## 9. Action Lifecycle and Status Model
+
+### 9.1 Action Types
+
+| Type code | Description | Default execution mode |
+|-----------|-------------|------------------------|
+| `sales.restock` | Restock recommendation | `approval_required` |
+| `sales.discount` | Suggest discount/promo | `approval_required` |
+| `sales.follow_up` | Customer follow-up suggestion | `approval_required` |
+| `content.instagram_draft` | Caption/post draft | `approval_required` (MVP) |
+| `content.product_description` | Product copy update | `approval_required` |
+| `support.reply_draft` | DM reply draft | `auto_executable` if low-risk policy matches, else `approval_required` |
+| `support.escalate` | Escalate to human | `approval_required` |
+
+Execution mode can be overridden per tenant in `ActionPolicy` config (Django).
+
+### 9.2 Action Status State Machine
+
+```
+                    ┌──────────────┐
+                    │  suggested   │  (created by agent via Django)
+                    └──────┬───────┘
+                           │
+           ┌───────────────┼───────────────┐
+           │               │               │
+           ▼               ▼               ▼
+   (auto_executable)  (approval_required)  │
+           │               │               │
+           ▼               ▼               │
+    ┌────────────┐   ┌───────────┐        │
+    │  queued    │   │  pending  │        │
+    │  (auto)    │   │ _approval │        │
+    └─────┬──────┘   └─────┬─────┘        │
+          │                │              │
+          │         ┌──────┼──────┐       │
+          │         ▼      ▼      ▼       │
+          │    approved rejected cancelled│
+          │         │      │              │
+          ▼         ▼      └──────────────┘
+    ┌─────────────────────────┐
+    │       executing         │
+    └────────────┬────────────┘
+                 │
+         ┌───────┴───────┐
+         ▼               ▼
+    ┌──────────┐   ┌──────────┐
+    │ executed │   │  failed  │
+    └──────────┘   └──────────┘
+```
+
+### 9.3 Status Definitions
+
+| Status | Meaning |
+|--------|---------|
+| `suggested` | Agent proposed action; Django recorded metadata |
+| `pending_approval` | Waiting for manager decision |
+| `approved` | Manager approved; eligible for execution |
+| `rejected` | Manager rejected; terminal |
+| `cancelled` | System or user cancelled before execution; terminal |
+| `queued` | Auto action approved by policy; waiting for worker |
+| `executing` | Side effect in progress (e.g. sending DM stub) |
+| `executed` | Successfully completed; terminal |
+| `failed` | Execution error; terminal (retry may create new action in future) |
+
+### 9.4 Action Record Fields (conceptual)
+
+- `id`, `tenant_id`, `store_id`, `report_run_id` (nullable)
+- `agent_name` (`sales`, `content`, `support`, `coordinator`)
+- `action_type`, `title`, `description`, `payload` (JSON)
+- `priority` (1–5), `requires_approval` (bool)
+- `status`, `status_reason`, `created_at`, `updated_at`
+- `decided_by` (user, nullable), `decided_at`
+- `executed_at`, `execution_result` (JSON)
+
+### 9.5 MVP Execution Scope
+
+- **Auto-executable:** Django marks `executed` with simulated/stub handler (log + timestamp) — proves workflow without real Instagram API write in phase 1.
+- **Approval-required:** Manager button triggers execution stub after approval.
+- Real external side effects (Instagram publish/send) are post-MVP unless explicitly added as final integration sub-phase.
+
+---
+
+## 10. Daily Report Generation Flow
+
+### 10.1 Trigger
+
+- Manager clicks **“Generate daily report”** on dashboard.
+- Django validates no concurrent `in_progress` run for store.
+
+### 10.2 Report Run Lifecycle
+
+| ReportRun status | Description |
+|------------------|-------------|
+| `queued` | Created, Celery task pending |
+| `running` | Coordinator workflow started |
+| `completed` | Report available |
+| `failed` | Error with `error_message` |
+
+### 10.3 Report Content Structure (JSON + rendered view)
+
+```json
+{
+  "generated_at": "ISO8601",
+  "period": { "from": "...", "to": "..." },
+  "sales_summary": { "total_revenue", "order_count", "top_products", "low_performers" },
+  "operational_insights": ["..."],
+  "prioritized_actions": [ { "action_id", "priority", "summary" } ],
+  "content_suggestions": [ { "type", "draft_preview" } ],
+  "support_insights": [ { "theme", "message_count", "summary" } ],
+  "next_steps": ["..."],
+  "agent_outputs_ref": ["uuid", "..."]
+}
+```
+
+### 10.4 Coordinator Responsibilities in Flow
+
+1. Validate inputs and fetch context
+2. Invoke specialist agents (parallel where possible)
+3. Normalize and deduplicate overlapping recommendations
+4. Rank actions by priority
+5. Write agent outputs and actions to Django
+6. Submit final report document
+
+### 10.5 Scheduling (future)
+
+- `celery-beat` included in compose but MVP only runs housekeeping (health, stale run cleanup).
+- Scheduled daily report: **not MVP**; DB model supports `scheduled_at` nullable for future.
+
+---
+
+## 11. Dashboard Requirements
+
+### 11.1 Pages / Views (MVP)
+
+| View | Features |
+|------|----------|
+| Login | Email/password (or demo login for Prestia seed) |
+| Home / Overview | Latest report status, quick stats, CTA to generate report |
+| Daily Reports | List historical reports; detail view with sections |
+| Agent Outputs | Filter by agent, report run, date |
+| Actions | Tabs: pending approval, all, executed, failed, rejected |
+| Action Detail | Approve / Reject buttons, payload preview, agent attribution |
+| History | Unified timeline: reports, outputs, action state changes |
+
+### 11.2 UX Requirements
+
+- Show loading state while report generates (poll every 3–5s)
+- Persian as default for AI-generated text; UI labels can remain English or Persian (product decision in implementation)
+- Clear badges for action status and `requires_approval`
+- Error toast if report fails with retry option
+- Empty states for new tenant
+
+### 11.3 API Endpoints (dashboard-facing, illustrative)
+
+- `POST /api/reports/generate/`
+- `GET /api/reports/`, `GET /api/reports/{id}/`
+- `GET /api/agent-outputs/`
+- `GET /api/actions/?status=pending_approval`
+- `POST /api/actions/{id}/approve/`, `POST /api/actions/{id}/reject/`
+- `GET /api/history/`
+
+---
+
+## 12. Docker Compose Service Plan
+
+### 12.1 Services
+
+| Service | Image / build | Ports (dev) | Depends on |
+|---------|---------------|-------------|------------|
+| `postgres` | `postgres:16` | internal | — |
+| `redis` | `redis:7` | internal | — |
+| `backend` | Dockerfile `backend/` | internal 8000 | postgres, redis |
+| `celery-worker` | same as backend | — | backend, redis, postgres |
+| `celery-beat` | same as backend | — | backend, redis, postgres |
+| `frontend` | Dockerfile `frontend/` | internal 3000 | backend |
+| `nginx` | `nginx:alpine` + config | 80, 443 | frontend, backend |
+| `coordinator-agent` | Dockerfile `agents/coordinator/` | internal 8100 | backend |
+| `sales-agent` | Dockerfile `agents/sales/` | internal 8101 | backend |
+| `content-agent` | Dockerfile `agents/content/` | internal 8102 | backend |
+| `support-agent` | Dockerfile `agents/support/` | internal 8103 | backend |
+
+### 12.2 Volumes and Networks
+
+- Named volume: `postgres_data`
+- Single compose network: `app-network`
+- Dev bind-mounts for hot reload on backend, frontend, agents
+
+### 12.3 Healthchecks
+
+- Each service exposes `/health` or `/healthz`
+- `depends_on` with condition `service_healthy` where supported
+- Django migrations run via entrypoint on backend start
+
+### 12.4 Repository Layout (planned)
+
+```
+virtual_store_team/
+├── docker-compose.yml
+├── .env.example
+├── nginx/
+├── backend/                 # Django
+├── frontend/                # Next.js
+├── agents/
+│   ├── shared/              # LLM client, Django API client, schemas
+│   ├── coordinator/
+│   ├── sales/
+│   ├── content/
+│   └── support/
+└── docs/
+    └── phases/
+```
+
+---
+
+## 13. Celery / Redis Usage Plan
+
+### 13.1 Redis Roles
+
+| Use | MVP |
+|-----|-----|
+| Celery broker | Yes |
+| Celery result backend | Yes (or django-celery-results in Postgres — pick one in implementation) |
+| Workflow state cache | Optional; LangGraph state in coordinator memory is enough for MVP |
+| Rate limiting | Optional future |
+
+### 13.2 Synchronous vs Asynchronous
+
+| Operation | Mode | Reason |
+|-----------|------|--------|
+| Dashboard CRUD reads | Sync HTTP | Fast |
+| Login, approve/reject action | Sync HTTP | User waiting |
+| Daily report generation | **Async** (Celery) | Multi-agent, LLM latency |
+| Action execution stub | Async Celery | Consistency with future real integrations |
+| Instagram message ingestion | Async | Polling/webhook handler enqueues processing |
+| PII sanitization before AI call | Sync in Celery task | Must complete before agent call |
+| Individual agent LLM call | Sync HTTP inside coordinator workflow | Orchestrator waits per node |
+| Coordinator workflow overall | Async from Django POV | Entire graph runs inside one Celery task chain or coordinator async endpoint called by Celery |
+
+### 13.3 Celery Tasks (MVP)
+
+| Task | Description |
+|------|-------------|
+| `reports.generate_daily` | Main entry: sanitize → call coordinator → handle result |
+| `actions.execute` | Process approved/auto actions (stub) |
+| `integrations.poll_instagram_messages` | Optional periodic ingest (beat schedule every N minutes) |
+| `maintenance.cleanup_stale_report_runs` | Mark stuck runs failed after timeout |
+
+### 13.4 Concurrency and Timeouts
+
+- Hard timeout per report run: 10 minutes (configurable)
+- One active report per store at a time
+- Celery worker concurrency: 2–4 for MVP
+
+---
+
+## 14. LLM Provider Abstraction Plan
+
+### 14.1 Design
+
+Shared Python package `agents/shared/llm/`:
+
+```
+LLMProvider (Protocol)
+  ├── complete(messages, schema=None) → LLMResponse
+  ├── embed(text) → vector          # optional, not MVP-critical
+  └── model_id: str
+
+Implementations:
+  ├── OpenAIProvider
+  ├── AnthropicProvider
+  └── MockProvider (tests/dev without API key)
+```
+
+Factory: `get_llm_provider()` reads `LLM_PROVIDER` and provider-specific env vars.
+
+### 14.2 Agent Usage Rules
+
+- Agents import only `get_llm_provider()` — never `openai` directly in business logic.
+- Structured outputs: use JSON schema / tool calling when provider supports; fallback to parse JSON from markdown fence.
+- Prompt templates live per agent; language instruction injected from `AI_OUTPUT_LANGUAGE`.
+
+### 14.3 Configuration
+
+| Variable | Purpose |
+|----------|---------|
+| `LLM_PROVIDER` | `openai`, `anthropic`, `mock` |
+| `LLM_MODEL` | Model name |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Provider secrets |
+| `LLM_TIMEOUT_SECONDS` | Default 60 |
+| `LLM_MAX_RETRIES` | Default 2 |
+
+---
+
+## 15. Environment Variables Plan
+
+### 15.1 Core
+
+| Variable | Example | Used by |
+|----------|---------|---------|
+| `DATABASE_URL` | `postgres://...` | backend, celery |
+| `REDIS_URL` | `redis://redis:6379/0` | backend, celery |
+| `DJANGO_SECRET_KEY` | random | backend |
+| `DJANGO_DEBUG` | `true` / `false` | backend |
+| `ALLOWED_HOSTS` | `localhost` | backend |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost` | backend |
+
+### 15.2 Auth
+
+| Variable | Example | Used by |
+|----------|---------|---------|
+| `JWT_SERVICE_SECRET` | random | backend, all agents |
+| `JWT_SERVICE_AUDIENCE` | `ai-services` | backend, agents |
+| `JWT_ACCESS_TOKEN_LIFETIME_MINUTES` | `30` | backend |
+
+### 15.3 AI / Language
+
+| Variable | Example | Used by |
+|----------|---------|---------|
+| `AI_OUTPUT_LANGUAGE` | `fa` or `en` | all agents |
+| `LLM_PROVIDER` | `openai` | all agents |
+| `LLM_MODEL` | `gpt-4o-mini` | all agents |
+| `OPENAI_API_KEY` | sk-... | agents (if openai) |
+
+### 15.4 Service URLs (internal DNS)
+
+| Variable | Example |
+|----------|---------|
+| `DJANGO_INTERNAL_BASE_URL` | `http://backend:8000` |
+| `COORDINATOR_AGENT_URL` | `http://coordinator-agent:8100` |
+| `SALES_AGENT_URL` | `http://sales-agent:8101` |
+| `CONTENT_AGENT_URL` | `http://content-agent:8102` |
+| `SUPPORT_AGENT_URL` | `http://support-agent:8103` |
+
+### 15.5 Frontend
+
+| Variable | Example |
+|----------|---------|
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost/api` |
+
+### 15.6 Conventions
+
+- Single `.env` for compose; `.env.example` committed with placeholders
+- Per-tenant secrets (Instagram tokens) in DB, not env
+
+---
+
+## 16. Minimal Logging and Monitoring Plan
+
+### 16.1 Logging (MVP)
+
+| Layer | Format | Fields |
+|-------|--------|--------|
+| Django | JSON structured (or key=value) | `timestamp`, `level`, `tenant_id`, `request_id`, `message` |
+| Celery | Same | `task_name`, `task_id`, `report_run_id`, `duration_ms` |
+| FastAPI agents | Same | `service_name`, `report_run_id`, `node_name` (LangGraph) |
+
+- Log levels: INFO default, DEBUG in dev
+- **Never log** sanitized payload bodies at INFO; DEBUG only in local dev with flag `LOG_SENSITIVE_DEBUG=false` default
+
+### 16.2 Correlation ID
+
+- `X-Request-ID` generated at nginx or Django; propagated to Celery task kwargs and agent HTTP headers
+- Report run ID ties cross-service traces together
+
+### 16.3 Monitoring (MVP minimal)
+
+| Capability | Approach |
+|------------|----------|
+| Health | `/health` on all services; docker healthchecks |
+| Errors | Django `500` logging + Celery task failure signal |
+| Metrics | Deferred — optional `GET /metrics` stub or simple admin counters in DB (`ReportRun` counts, failure rate) |
+| Alerting | Not MVP — document manual dashboard review |
+
+### 16.4 Admin Visibility
+
+- Django admin enabled for: Tenant, Store, ReportRun, Action, AgentOutput (read-only for outputs)
+- Helps debug Prestia demo without custom tooling
+
+---
+
+## 17. MVP Phases Overview
+
+| Phase | Name | Focus |
+|-------|------|-------|
+| 0 | Foundation & Docker | Repo scaffold, compose, healthchecks |
+| 1 | Django Core & Multi-Tenancy | Models, tenant isolation, admin |
+| 2 | Auth & Users | Manager login, service JWT issuance |
+| 3 | Store Data & Internal APIs | Products, sales seed, PII sanitizer, AI read APIs |
+| 4 | Actions, Reports & History | Action model, ReportRun, audit trail |
+| 5 | Celery & Async Wiring | Report task skeleton, redis broker |
+| 6 | Agent Scaffold & LLM Abstraction | Shared lib, four FastAPI services, mock LLM |
+| 7 | Sales Agent | Real sales analysis logic |
+| 8 | Content Agent | Instagram-focused drafts |
+| 9 | Support Agent | DM drafts + approval classification |
+| 10 | Coordinator & LangGraph | Daily report orchestration end-to-end |
+| 11 | Frontend Dashboard | UI for reports, actions, approval |
+| 12 | Prestia Seed & E2E Demo | Demo data, manual QA, polish |
+
+---
+
+## 18. Phase Details
+
+---
+
+### Phase 0 — Foundation & Docker
+
+**Goal:** Runnable compose stack with placeholder services and clear project layout.
+
+**Deliverables:**
+
+- `docker-compose.yml` with all 11 services
+- Dockerfiles for backend, frontend, each agent (minimal hello-world)
+- nginx routing: `/api` → backend, `/` → frontend
+- `.env.example`
+- README with `docker compose up` instructions
+
+**Tasks:**
+
+1. Initialize monorepo directory structure
+2. Configure postgres, redis, networks, volumes
+3. Stub backend (Django project shell), frontend (Next.js shell), agents (FastAPI `/health`)
+4. nginx reverse proxy config
+5. Healthchecks and service dependencies
+
+**Subtasks:**
+
+- 0.1 Create `backend/Dockerfile` + entrypoint (migrate + runserver/gunicorn)
+- 0.2 Create `frontend/Dockerfile`
+- 0.3 Create agent Dockerfiles (shared base image optional)
+- 0.4 Wire compose env_file
+- 0.5 Verify all containers healthy with `docker compose ps`
+
+**Dependencies:** None
+
+**Acceptance criteria:**
+
+- `docker compose up` starts all services without crash loops
+- `GET /health` (or equivalent) returns 200 from each agent and backend
+- Frontend loads a placeholder page through nginx on port 80
+
+---
+
+### Phase 1 — Django Core & Multi-Tenancy
+
+**Goal:** Tenant-scoped data model and enforced isolation.
+
+**Deliverables:**
+
+- Django apps: `tenants`, `stores`, `accounts`
+- Models: `Tenant`, `Store`, `User` (custom user with `tenant_id`)
+- Tenant middleware and base model mixin `TenantScopedModel`
+- Django admin registration
+- Initial migration
+
+**Tasks:**
+
+1. Custom user model linked to tenant
+2. Tenant and Store CRUD (admin only for MVP)
+3. Automatic tenant filtering on querysets
+4. Management command `seed_prestia` (creates tenant + store skeleton, no products yet)
+
+**Subtasks:**
+
+- 1.1 Define `Tenant` (`id`, `slug`, `name`, `settings` JSON)
+- 1.2 Define `Store` (`tenant`, `name`, `slug`, `timezone`, `currency`)
+- 1.3 Implement `TenantMiddleware` from subdomain or user session (MVP: user session only)
+- 1.4 Add tests for cross-tenant access denial
+
+**Dependencies:** Phase 0
+
+**Acceptance criteria:**
+
+- Admin can create tenant and store
+- `seed_prestia` creates isolated Prestia tenant
+- API request as Prestia user cannot read another tenant's store ID
+
+---
+
+### Phase 2 — Auth & Users
+
+**Goal:** Manager authentication and JWT infrastructure for AI services.
+
+**Deliverables:**
+
+- Login/logout API endpoints
+- Session or JWT auth for frontend
+- `ServiceJWT` minting utility
+- JWT validation middleware for `/internal/ai/*` routes
+- Service registry constants (`coordinator-agent`, etc.)
+
+**Tasks:**
+
+1. Implement manager login
+2. Build service JWT with claims
+3. Protect internal API namespace
+4. Document token lifecycle
+
+**Subtasks:**
+
+- 2.1 `POST /api/auth/login/`, `POST /api/auth/logout/`, `GET /api/auth/me/`
+- 2.2 `InternalAIAuthentication` class validating Bearer JWT
+- 2.3 Reject expired/wrong-audience tokens with 401
+- 2.4 Unit tests for token mint and verify
+
+**Dependencies:** Phase 1
+
+**Acceptance criteria:**
+
+- Manager can authenticate via API
+- Valid service JWT accesses a test internal endpoint; invalid token is rejected
+- Human user token cannot access internal AI routes
+
+---
+
+### Phase 3 — Store Data, PII & Internal Read APIs
+
+**Goal:** Generic store commerce models and sanitized AI-facing read APIs.
+
+**Deliverables:**
+
+- Models: `Product`, `Category`, `Order`, `OrderItem`, `InventoryLevel`, `Customer` (PII stored, not exported raw), `MessageThread`, `Message`
+- `PiiSanitizer` module with tests
+- Internal APIs: sales summary, products, low stock, recent messages (sanitized)
+- Prestia seed data: sample bags, orders, messages
+
+**Tasks:**
+
+1. Design normalized product/order schema (generic e-commerce)
+2. Implement sanitizer pipeline
+3. Build read endpoints with tenant scoping
+4. Seed realistic Prestia demo data
+
+**Subtasks:**
+
+- 3.1 Product/category CRUD via admin + seed command
+- 3.2 Sales aggregation queries (today, last 7 days)
+- 3.3 Low-stock query (`inventory < threshold`)
+- 3.4 Message ingest model (manual admin entry or JSON import for MVP)
+- 3.5 `GET /internal/ai/context/{report_run_id}/` stub returning sanitized bundle
+
+**Dependencies:** Phase 2
+
+**Acceptance criteria:**
+
+- Internal API returns sales and inventory data for Prestia store
+- Raw phone/email never appear in API JSON destined for AI
+- PiiSanitizer tests pass for FA/EN patterns
+
+---
+
+### Phase 4 — Actions, Reports & History
+
+**Goal:** Persist reports, agent outputs, and action lifecycle in Django.
+
+**Deliverables:**
+
+- Models: `ReportRun`, `DailyReport`, `AgentOutput`, `Action`, `ActionEvent` (audit)
+- State transition service for actions
+- Dashboard APIs (read) for reports and actions
+- Approve/reject endpoints
+
+**Tasks:**
+
+1. Implement action state machine
+2. ReportRun lifecycle
+3. History/timeline endpoint
+4. Action policy defaults per type
+
+**Subtasks:**
+
+- 4.1 `ActionService.create_from_agent_payload()`
+- 4.2 `ActionService.approve()`, `.reject()`, `.queue_execution()`
+- 4.3 `POST /internal/ai/actions/`, `POST /internal/ai/agent-outputs/`
+- 4.4 `POST /internal/ai/report-runs/{id}/complete/`
+- 4.5 `GET /api/history/` unified feed
+
+**Dependencies:** Phase 3
+
+**Acceptance criteria:**
+
+- Agent can POST suggested action → appears as `pending_approval` or `queued`
+- Manager approve transitions to executable state
+- Reject records reason and terminal state
+- History shows chronological events
+
+---
+
+### Phase 5 — Celery & Async Wiring
+
+**Goal:** Async daily report job orchestration from Django.
+
+**Deliverables:**
+
+- Celery app configured with Redis
+- `reports.generate_daily` task (skeleton calling coordinator HTTP)
+- `actions.execute` stub task
+- celery-beat with stale-run cleanup schedule
+- `POST /api/reports/generate/` enqueueing task
+
+**Tasks:**
+
+1. Celery config in Django
+2. Report generation task with status updates
+3. Error handling and timeouts
+4. Beat schedule for maintenance only
+
+**Subtasks:**
+
+- 5.1 Configure `CELERY_BROKER_URL`, worker entrypoint in compose
+- 5.2 Task: create ReportRun → `running` → call coordinator → `completed`/`failed`
+- 5.3 Prevent duplicate concurrent runs per store
+- 5.4 Integration test with mock coordinator HTTP server
+
+**Dependencies:** Phase 4
+
+**Acceptance criteria:**
+
+- API trigger enqueues Celery task visible in worker logs
+- ReportRun status progresses through lifecycle
+- Failed coordinator call sets `failed` with error message
+
+---
+
+### Phase 6 — Agent Scaffold & LLM Abstraction
+
+**Goal:** Shared agent library and working FastAPI containers with mock LLM.
+
+**Deliverables:**
+
+- `agents/shared/`: `llm/`, `django_client/`, `schemas/`, `language.py`
+- Each agent: FastAPI app, settings, `/health`, `/run` or workflow endpoint
+- `MockProvider` returning deterministic JSON
+- Docker compose integration with env vars
+
+**Tasks:**
+
+1. Implement LLM provider protocol and factory
+2. Django HTTP client with JWT forwarding
+3. Pydantic schemas for agent I/O
+4. Wire all four agents to echo mock responses
+
+**Subtasks:**
+
+- 6.1 `AI_OUTPUT_LANGUAGE` prompt prefix helper (Persian default)
+- 6.2 `DjangoClient` with retry and correlation ID header
+- 6.3 JSON schema validation on agent responses
+- 6.4 Coordinator stub endpoint accepting report job
+
+**Dependencies:** Phase 5
+
+**Acceptance criteria:**
+
+- Each agent container starts and responds to `/health`
+- Setting `LLM_PROVIDER=mock` produces structured output without API key
+- Agent can call Django internal API with service JWT
+
+---
+
+### Phase 7 — Sales Agent
+
+**Goal:** Useful sales and inventory analysis with structured action recommendations.
+
+**Deliverables:**
+
+- Sales agent LangGraph or pipeline (single-agent graph)
+- Prompts for sales analysis in `AI_OUTPUT_LANGUAGE`
+- Output schema: `SalesAnalysisResult` with `recommendations[]`
+- Integration with Django: POST actions of types `sales.*`
+
+**Tasks:**
+
+1. Fetch sales/inventory from Django client
+2. LLM analysis with structured output
+3. Map recommendations to Action payloads
+4. Unit tests with mock data
+
+**Subtasks:**
+
+- 7.1 Define recommendation priority rubric in prompt
+- 7.2 Handle empty sales gracefully
+- 7.3 Validate JSON against schema before return
+- 7.4 Document example output in `docs/examples/sales_output.json`
+
+**Dependencies:** Phase 6
+
+**Acceptance criteria:**
+
+- Given Prestia seed data, agent returns at least one restock or discount recommendation
+- Recommendations include `priority`, `action_type`, `payload` fields
+- No PII in agent logs or LLM prompts
+
+---
+
+### Phase 8 — Content Agent
+
+**Goal:** Instagram-oriented content drafts tied to store products.
+
+**Deliverables:**
+
+- Content agent pipeline
+- Output schema: `ContentSuggestions` (captions, product descriptions)
+- Actions of type `content.instagram_draft`, `content.product_description`
+
+**Tasks:**
+
+1. Pull top products from Django API
+2. Generate Persian captions (default) with campaign angle
+3. Return reviewable drafts (approval required)
+
+**Subtasks:**
+
+- 8.1 Prompt template with brand voice from `store.settings`
+- 8.2 Limit drafts to N per run (e.g. 3) for MVP
+- 8.3 Schema validation tests
+
+**Dependencies:** Phase 6 (parallel with Phase 7 after Phase 6 completes)
+
+**Acceptance criteria:**
+
+- Content agent produces ≥1 Instagram caption for a Prestia product
+- Output marked `approval_required` when persisted as actions
+- English output works when `AI_OUTPUT_LANGUAGE=en`
+
+---
+
+### Phase 9 — Support Agent
+
+**Goal:** Safe handling of customer message threads with approval-aware reply drafts.
+
+**Deliverables:**
+
+- Support agent pipeline
+- Classification: low-risk vs sensitive (approval required)
+- Output schema: `SupportInsights`, `reply_drafts[]`
+- Scope guardrails in system prompt
+
+**Tasks:**
+
+1. Consume sanitized message threads API
+2. Summarize themes and sentiment (non-PII)
+3. Draft replies with safety constraints
+4. Assign correct `requires_approval` flag
+
+**Subtasks:**
+
+- 9.1 Policy table for auto vs approval (e.g. generic FAQ → auto draft only, refund mention → approval)
+- 9.2 Refusal behavior for out-of-scope requests
+- 9.3 Tests for unsafe prompt injection from message text
+
+**Dependencies:** Phase 6 (parallel with Phases 7–8)
+
+**Acceptance criteria:**
+
+- Support agent summarizes recent threads without leaking PII
+- Sensitive drafts created with `pending_approval`
+- Agent refuses to perform sales tasks when asked in message
+
+---
+
+### Phase 10 — Coordinator & LangGraph
+
+**Goal:** End-to-end orchestrated daily report across all agents.
+
+**Deliverables:**
+
+- LangGraph workflow in coordinator-agent
+- Nodes: `fetch_context`, `run_sales`, `run_content`, `run_support`, `merge`, `submit`
+- Parallel execution of specialist agents where possible
+- Final `DailyReport` payload to Django
+
+**Tasks:**
+
+1. Define graph state typed dict
+2. Implement HTTP calls to specialist agents
+3. Merge and prioritize actions (dedupe by product/SKU)
+4. Error handling: partial failure still produces report with warnings
+
+**Subtasks:**
+
+- 10.1 Star topology only (no agent-to-agent)
+- 10.2 Timeout per node
+- 10.3 Persist intermediate `AgentOutput` records via Django client
+- 10.4 Integration test: full graph with mock LLM across services
+
+**Dependencies:** Phases 7, 8, 9
+
+**Acceptance criteria:**
+
+- Celery task → coordinator → all agents → Django `ReportRun=completed`
+- Daily report contains sales summary, actions, content and support sections
+- Coordinator does not auto-approve actions
+- Partial agent failure documented in report `warnings[]`
+
+---
+
+### Phase 11 — Frontend Dashboard
+
+**Goal:** Manager-facing UI fulfilling all dashboard requirements.
+
+**Deliverables:**
+
+- Auth pages and protected routes
+- Report list and detail views
+- Generate report button with polling
+- Actions list with approve/reject
+- Agent outputs and history timeline
+- Basic responsive layout
+
+**Tasks:**
+
+1. API client layer
+2. Report generation UX
+3. Action approval workflow UI
+4. History view
+
+**Subtasks:**
+
+- 11.1 Login flow with token/cookie handling
+- 11.2 Report detail rendering markdown/sections from JSON
+- 11.3 Status badges and filters
+- 11.4 Error and empty states
+- 11.5 Persian text rendering (RTL support where needed)
+
+**Dependencies:** Phases 4, 5, 10
+
+**Acceptance criteria:**
+
+- Manager can login, trigger report, see completed report within reasonable time
+- Pending actions show approve/reject; state updates without page reload (or on refresh)
+- All MVP dashboard requirements from Section 11 are met
+
+---
+
+### Phase 12 — Prestia Seed & E2E Demo
+
+**Goal:** Polished demo proving MVP success criteria on Prestia tenant.
+
+**Deliverables:**
+
+- Complete `seed_prestia` with products, orders, inventory, messages
+- Demo manager account credentials in README (not production secrets)
+- E2E test script or checklist document
+- Bug fixes and performance tuning
+
+**Tasks:**
+
+1. Enrich seed data for compelling report output
+2. Run full manual E2E walkthrough
+3. Fix integration issues
+4. Document known limitations
+
+**Subtasks:**
+
+- 12.1 Verify Persian output quality with real LLM
+- 12.2 Review PII in coordinator context one final time
+- 12.3 Stabilize docker compose for fresh clone
+- 12.4 Write `docs/demo/prestia_walkthrough.md` (optional short guide)
+
+**Dependencies:** Phase 11
+
+**Acceptance criteria:**
+
+- **MVP success criteria met** (Section 1 and user requirements)
+- Fresh `docker compose up` + seed + login + generate report works
+- Dashboard shows prioritized actions and agent outputs
+- Approval workflow demonstrable on at least one action
+
+---
+
+## 19. Suggested Implementation Order
+
+```
+Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → (7 ∥ 8 ∥ 9) → 10 → 11 → 12
+```
+
+**Rationale:**
+
+1. Infrastructure and Django tenancy first — everything depends on scoped data.
+2. Internal APIs and action model before agents — agents have somewhere to write.
+3. Celery before real agents — async contract is stable early.
+4. Agent scaffold with mock LLM before real prompts — validates boundaries cheaply.
+5. Specialist agents in parallel — independent teams/paths possible.
+6. Coordinator only after specialists work — integration risk isolated.
+7. Frontend after backend E2E path exists — can use admin/API for interim testing.
+8. Prestia polish last — demo quality without blocking architecture.
+
+**Critical path:** 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 10 → 11 → 12
+
+---
+
+## 20. Risks and Simplifications for MVP
+
+| Risk | Mitigation / simplification |
+|------|----------------------------|
+| LangGraph complexity | Star topology; single workflow (`daily_report` only); in-memory state |
+| LLM cost/latency | Use small models; `MockProvider` for CI; cache product list per run |
+| Instagram API access | MVP uses seeded messages; send/publish is stubbed |
+| PII leakage | Central Django sanitizer; automated tests; manual QA checklist |
+| Multi-agent failure modes | Partial report with warnings; coordinator timeout per node |
+| Over-engineering tenancy | Single store per tenant in MVP; schema still has `store_id` |
+| Persian LLM quality | Prompt explicitly requests formal Persian; allow `AI_OUTPUT_LANGUAGE=en` fallback for demos |
+| JWT secret leakage | Dev-only secrets in `.env`; document production KMS later |
+| Celery debugging | Log `report_run_id`; Django admin shows run status |
+| Scope creep | Explicit “not in MVP” list (Section 21) |
+
+**Intentional simplifications:**
+
+- Action execution is **stubbed** (log + status) unless minimal Instagram write is added late
+- No scheduled daily reports (manual trigger only)
+- No competitor scraping for content agent
+- No billing/subscription for SaaS
+- No multi-store per tenant UI (schema ready)
+- Coordinator is the only orchestrator; no peer agent calls
+
+---
+
+## 21. What Should Explicitly NOT Be Implemented in the First MVP
+
+| Excluded | Reason |
+|----------|--------|
+| Scheduled/automatic daily reports (cron) | Manual trigger sufficient; beat only for maintenance |
+| Real Instagram publish/send integration | High scope; stub execution proves workflow |
+| Competitor website scraping | Content agent future feature |
+| Multiple LLM providers wired simultaneously | Abstraction yes; one active provider in MVP |
+| Direct database access from agents | Architecture violation |
+| Prestia-hardcoded business rules in code | Use tenant data and settings only |
+| Collapsing agents into monolith service | Violates service boundary requirement |
+| Customer-facing portal | Manager dashboard only |
+| Billing, plans, Stripe | Post-MVP SaaS commercialization |
+| Self-serve tenant signup | Admin/seed creates tenants |
+| Advanced RBAC beyond manager/viewer | Start with manager-only if needed |
+| Kubernetes / cloud deploy | Docker Compose only |
+| Full observability stack (Prometheus/Grafana) | Minimal health + structured logs |
+| Vector DB / RAG over documents | Not required for structured store APIs |
+| Auto-execution of approval-required actions | Human approval must be demonstrated |
+| Sending raw PII to LLM | Non-negotiable exclusion |
+| Website article generation | Content agent focuses Instagram + product copy |
+| Multi-language UI i18n framework | AI output language only via env |
+| Real-time websocket updates | Polling is enough |
+| Agent mesh (peer-to-peer without coordinator) | Adds complexity without MVP value |
+| Custom workflow builder for managers | Fixed daily report workflow only |
+
+---
+
+## Appendix A — Example Action Payload (Sales Restock)
+
+```json
+{
+  "action_type": "sales.restock",
+  "title": "Restock: Leather Tote Model A",
+  "description": "Only 2 units left; sold 14 in last 7 days.",
+  "priority": 1,
+  "requires_approval": true,
+  "payload": {
+    "product_id": "uuid",
+    "sku": "BAG-001",
+    "current_stock": 2,
+    "suggested_order_qty": 20,
+    "rationale": "High velocity relative to stock"
+  }
+}
+```
+
+## Appendix B — Correlation and IDs
+
+- `report_run_id` — UUID, primary trace key for one daily report generation
+- `action_id` — UUID, stable across approval and execution
+- `agent_output_id` — UUID, raw structured agent response before merge
+
+## Appendix C — Document Maintenance
+
+- Update this document when phase scope changes before implementation of that phase.
+- Implementation steps should reference `step-0.1`, `step-0.2`, etc. as subsequent planning/execution docs per phase.
+
+---
+
+*End of Step 0.0 planning document.*

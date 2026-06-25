@@ -29,6 +29,10 @@ class UnknownServiceError(ServiceJWTError):
     """Raised when the token subject is not a registered AI service."""
 
 
+class ServiceJWTMintError(ServiceJWTError):
+    """Raised when minting arguments are invalid."""
+
+
 def _require_service_secret() -> str:
     secret = settings.JWT_SERVICE_SECRET
     if not secret:
@@ -67,17 +71,26 @@ def decode_service_jwt(token: str) -> dict:
     return claims
 
 
+def _require_non_empty_scope_id(value: str | int | None, field_name: str) -> str:
+    if value is None or str(value).strip() == "":
+        raise ServiceJWTMintError(f"{field_name} is required.")
+    return str(value)
+
+
 def mint_service_jwt(
     *,
     service_name: str,
-    tenant_id: str,
-    store_id: str,
-    report_run_id: str | None = None,
+    tenant_id: str | int,
+    store_id: str | int,
+    report_run_id: str | int | None = None,
     lifetime_minutes: int | None = None,
 ) -> str:
     """Mint a short-lived service JWT. Intended for tests and future Celery issuance."""
     if service_name not in ALLOWED_AI_SERVICES:
         raise UnknownServiceError
+
+    tenant_id = _require_non_empty_scope_id(tenant_id, "tenant_id")
+    store_id = _require_non_empty_scope_id(store_id, "store_id")
 
     secret = _require_service_secret()
     algorithm = settings.JWT_SERVICE_ALGORITHM
@@ -87,8 +100,8 @@ def mint_service_jwt(
     now = datetime.now(timezone.utc)
     payload = {
         "sub": service_name,
-        "tenant_id": str(tenant_id),
-        "store_id": str(store_id),
+        "tenant_id": tenant_id,
+        "store_id": store_id,
         "iat": now,
         "exp": now + timedelta(minutes=lifetime),
         "aud": audience,

@@ -1,0 +1,39 @@
+---
+description: Rules for Phase 2.4 - Service JWT mint and verify tests
+globs:
+  - "backend/**/*.py"
+  - ".env.example"
+  - "docs/phases/step-2.4.md"
+alwaysApply: false
+---
+
+# Phase 2.4 — Service JWT Mint and Verify Tests
+
+This step is limited to **service JWT mint/verify tests** and small supporting refinements in the JWT utility.
+
+## Scope
+
+- Unit tests for `mint_service_jwt` and `decode_service_jwt`
+- Optional small refinements to the service JWT helper for testability and correctness
+- Integration checks proving minted tokens work with `InternalAIAuthentication` and `GET /internal/ai/auth-check/`
+- Document the step at `docs/phases/step-2.4.md`
+
+## Security rules
+
+- Do **not** log or expose raw JWT tokens or secrets
+- Use test-specific settings overrides — never real production secrets
+- Human dashboard/session auth must **not** access internal AI routes without a valid service JWT
+
+## Explicit non-goals
+
+Do **not** implement Phase 3 or beyond:
+
+- Store data or internal commerce APIs (products, orders, inventory, sales summary, context bundles)
+- Customer messages, PII sanitizer, report generation, actions
+- Celery workflows or FastAPI agent logic
+- `ReportRun`, `DailyReport`, `AgentOutput`, or `Action` models
+- Prestia-specific behavior or hardcoded demo commerce data
+
+## Documentation requirement
+
+Create `docs/phases/step-2.4.md` with token lifecycle, claims, tests, security notes, Phase 2 completion summary, and Phase 3 next steps.

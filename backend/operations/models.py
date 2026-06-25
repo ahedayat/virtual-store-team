@@ -8,6 +8,13 @@ from stores.models import Store
 from tenants.models import Tenant, TenantScopedModel
 
 from operations.constants import (
+    ACTION_EVENT_ACTOR_AGENT,
+    ACTION_EVENT_ACTOR_SYSTEM,
+    ACTION_EVENT_ACTOR_USER,
+    ACTION_EVENT_TYPE_APPROVED,
+    ACTION_EVENT_TYPE_CREATED,
+    ACTION_EVENT_TYPE_QUEUED,
+    ACTION_EVENT_TYPE_REJECTED,
     ACTION_STATUS_APPROVED,
     ACTION_STATUS_CANCELLED,
     ACTION_STATUS_EXECUTED,
@@ -16,9 +23,6 @@ from operations.constants import (
     ACTION_STATUS_PENDING_APPROVAL,
     ACTION_STATUS_QUEUED,
     ACTION_STATUS_REJECTED,
-    ACTION_EVENT_ACTOR_AGENT,
-    ACTION_EVENT_ACTOR_SYSTEM,
-    ACTION_EVENT_TYPE_CREATED,
     REPORT_RUN_STATUS_COMPLETED,
     REPORT_RUN_STATUS_FAILED,
     REPORT_RUN_STATUS_QUEUED,
@@ -46,11 +50,15 @@ class ActionStatus(models.TextChoices):
 
 class ActionEventType(models.TextChoices):
     CREATED = ACTION_EVENT_TYPE_CREATED, "Created"
+    APPROVED = ACTION_EVENT_TYPE_APPROVED, "Approved"
+    REJECTED = ACTION_EVENT_TYPE_REJECTED, "Rejected"
+    QUEUED = ACTION_EVENT_TYPE_QUEUED, "Queued"
 
 
 class ActionEventActorType(models.TextChoices):
     AGENT = ACTION_EVENT_ACTOR_AGENT, "Agent"
     SYSTEM = ACTION_EVENT_ACTOR_SYSTEM, "System"
+    USER = ACTION_EVENT_ACTOR_USER, "User"
 
 
 class ReportRun(TenantScopedModel):

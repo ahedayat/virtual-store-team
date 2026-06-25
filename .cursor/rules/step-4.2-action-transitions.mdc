@@ -1,0 +1,125 @@
+---
+description: Phase 4.2 rules for implementing ActionService action transitions
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-4.2.md"
+alwaysApply: false
+---
+
+# Step 4.2 — Action State Transition Rules
+
+This rule applies only to Phase 4.2 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement only:
+
+- `ActionService.approve()`
+- `ActionService.reject()`
+- `ActionService.queue_execution()`
+
+Do not implement later Phase 4 or Phase 5 work in this step:
+
+- Do not implement `/internal/ai/actions/`
+- Do not implement `/internal/ai/agent-outputs/`
+- Do not implement `/internal/ai/report-runs/{id}/complete/`
+- Do not implement `/api/history/`
+- Do not implement dashboard-facing action endpoints
+- Do not implement Celery `actions.execute`
+- Do not implement real external side effects
+- Do not implement Instagram send/publish logic
+- Do not implement frontend UI
+
+## Architecture Rules
+
+- Django and Postgres remain the source of truth.
+- All action transitions must be tenant-scoped and store-scoped.
+- Human approval/rejection must only be performed by a trusted manager user.
+- AI services must not approve, reject, or execute actions.
+- Every state transition must create an `ActionEvent`.
+- Transition logic must live in the service layer, not directly in views or serializers.
+- Keep implementation generic and avoid Prestia-specific logic.
+
+## Transition Rules
+
+Use strict state machine validation.
+
+Allowed transitions in this step:
+
+- `pending_approval` → `approved` via `ActionService.approve()`
+- `pending_approval` → `rejected` via `ActionService.reject()`
+- `approved` → `queued` via `ActionService.queue_execution()`
+
+Optional idempotency:
+
+- Calling `queue_execution()` on an already `queued` action may either return the action unchanged or raise a clear transition error. Pick one behavior and document it.
+
+Forbidden transitions:
+
+- Rejected actions must be terminal.
+- Queued actions must not be approved or rejected.
+- Executing/executed/failed actions must not be changed in this step.
+- Approval-required actions must not skip approval and go directly to queued.
+- Auto-executable actions already queued by Step 4.1 must not be executed here.
+
+## Audit Rules
+
+Each transition must create an `ActionEvent` with:
+
+- action reference
+- event type
+- previous status
+- new status
+- actor, when applicable
+- reason, when provided
+- metadata/context
+- timestamp
+
+Approval must also update:
+
+- `decided_by`
+- `decided_at`
+- `status_reason`, if applicable
+
+Reject must also update:
+
+- `decided_by`
+- `decided_at`
+- `status_reason` or rejection reason
+
+Queue execution must not set:
+
+- `executed_at`
+- `execution_result`
+- external integration result
+
+## Testing Rules
+
+Add or update tests for:
+
+- successful approve transition
+- successful reject transition
+- successful queue transition
+- invalid transitions
+- terminal rejected behavior
+- tenant/store mismatch protection
+- `decided_by` and `decided_at`
+- `ActionEvent` creation for every transition
+- no execution side effects in this step
+
+## Documentation Rules
+
+Create or update:
+
+- `docs/phases/step-4.2.md`
+
+The documentation must explain:
+
+- implemented transitions
+- allowed and forbidden transitions
+- audit event behavior
+- fields updated by each service method
+- tests added
+- validation commands
+- what was intentionally not implemented
+- notes for Step 4.3

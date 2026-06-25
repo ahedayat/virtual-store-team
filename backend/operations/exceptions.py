@@ -8,3 +8,7 @@ class ActionPayloadValidationError(ActionServiceError):
 
 class ActionScopeError(ActionServiceError):
     """Raised when related records do not match trusted tenant/store scope."""
+
+
+class ActionTransitionError(ActionServiceError):
+    """Raised when an action lifecycle transition is invalid or unauthorized."""

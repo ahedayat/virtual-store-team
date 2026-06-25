@@ -3,11 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from django.db import transaction
+from django.utils import timezone
 
+from accounts.models import User, UserRole
 from operations.constants import (
+    ACTION_EVENT_TYPE_APPROVED,
     ACTION_EVENT_TYPE_CREATED,
+    ACTION_EVENT_TYPE_QUEUED,
+    ACTION_EVENT_TYPE_REJECTED,
+    ACTION_STATUS_APPROVED,
     ACTION_STATUS_PENDING_APPROVAL,
     ACTION_STATUS_QUEUED,
+    ACTION_STATUS_REJECTED,
     ACTION_TYPE_SUPPORT_REPLY_DRAFT,
     ALLOWED_AGENT_NAMES,
     DEFAULT_REQUIRES_APPROVAL_BY_ACTION_TYPE,
@@ -15,7 +22,11 @@ from operations.constants import (
     MIN_ACTION_PRIORITY,
     SUPPORTED_ACTION_TYPES,
 )
-from operations.exceptions import ActionPayloadValidationError, ActionScopeError
+from operations.exceptions import (
+    ActionPayloadValidationError,
+    ActionScopeError,
+    ActionTransitionError,
+)
 from operations.models import Action, ActionEvent, ActionEventActorType, AgentOutput
 from stores.models import Store
 from tenants.models import Tenant
@@ -98,6 +109,174 @@ class ActionService:
             )
 
         return action
+
+    @classmethod
+    def approve(
+        cls,
+        *,
+        action: Action,
+        actor: User,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Action:
+        cls._validate_human_decision_actor(action=action, actor=actor)
+        return cls._transition_action(
+            action=action,
+            expected_current_status=ACTION_STATUS_PENDING_APPROVAL,
+            new_status=ACTION_STATUS_APPROVED,
+            event_type=ACTION_EVENT_TYPE_APPROVED,
+            actor_type=ActionEventActorType.USER,
+            actor_id=str(actor.id),
+            reason=reason,
+            metadata=metadata,
+            field_updates=cls._build_decision_field_updates(actor=actor, reason=reason),
+        )
+
+    @classmethod
+    def reject(
+        cls,
+        *,
+        action: Action,
+        actor: User,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Action:
+        cls._validate_human_decision_actor(action=action, actor=actor)
+        return cls._transition_action(
+            action=action,
+            expected_current_status=ACTION_STATUS_PENDING_APPROVAL,
+            new_status=ACTION_STATUS_REJECTED,
+            event_type=ACTION_EVENT_TYPE_REJECTED,
+            actor_type=ActionEventActorType.USER,
+            actor_id=str(actor.id),
+            reason=reason,
+            metadata=metadata,
+            field_updates=cls._build_decision_field_updates(actor=actor, reason=reason),
+        )
+
+    @classmethod
+    def queue_execution(
+        cls,
+        *,
+        action: Action,
+        actor: User | None = None,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Action:
+        if actor is not None:
+            if not isinstance(actor, User):
+                raise ActionTransitionError(
+                    "queue_execution actor must be a human user when provided."
+                )
+            if actor.tenant_id != action.tenant_id:
+                raise ActionTransitionError(
+                    "Actor must belong to the same tenant as the action."
+                )
+
+        actor_type, actor_id = cls._resolve_transition_actor(actor)
+        return cls._transition_action(
+            action=action,
+            expected_current_status=ACTION_STATUS_APPROVED,
+            new_status=ACTION_STATUS_QUEUED,
+            event_type=ACTION_EVENT_TYPE_QUEUED,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            reason=reason,
+            metadata=metadata,
+            field_updates={},
+        )
+
+    @staticmethod
+    def _validate_human_decision_actor(*, action: Action, actor: User) -> None:
+        if not isinstance(actor, User):
+            raise ActionTransitionError(
+                "Approval and rejection require a trusted human user actor."
+            )
+        if actor.tenant_id != action.tenant_id:
+            raise ActionTransitionError(
+                "Actor must belong to the same tenant as the action."
+            )
+        if actor.role != UserRole.MANAGER and not actor.is_staff:
+            raise ActionTransitionError(
+                "Only managers or staff users can approve or reject actions."
+            )
+
+    @staticmethod
+    def _build_decision_field_updates(*, actor: User, reason: str | None) -> dict[str, Any]:
+        updates: dict[str, Any] = {
+            "decided_by": actor,
+            "decided_at": timezone.now(),
+        }
+        if reason is not None:
+            updates["status_reason"] = reason
+        return updates
+
+    @staticmethod
+    def _resolve_transition_actor(actor: User | None) -> tuple[str, str]:
+        if actor is None:
+            return ActionEventActorType.SYSTEM, "system"
+        return ActionEventActorType.USER, str(actor.id)
+
+    @classmethod
+    def _transition_action(
+        cls,
+        *,
+        action: Action,
+        expected_current_status: str,
+        new_status: str,
+        event_type: str,
+        actor_type: str,
+        actor_id: str,
+        reason: str | None,
+        metadata: dict[str, Any] | None,
+        field_updates: dict[str, Any],
+    ) -> Action:
+        with transaction.atomic():
+            locked_action = Action.objects.select_for_update().get(pk=action.pk)
+            current_status = locked_action.status
+
+            if current_status != expected_current_status:
+                raise ActionTransitionError(
+                    cls._transition_error_message(
+                        attempted=event_type,
+                        current_status=current_status,
+                        expected_status=expected_current_status,
+                    )
+                )
+
+            locked_action.status = new_status
+            for field_name, field_value in field_updates.items():
+                setattr(locked_action, field_name, field_value)
+
+            update_field_names = ["status", "updated_at", *field_updates.keys()]
+            locked_action.save(update_fields=update_field_names)
+
+            event_metadata = dict(metadata or {})
+            ActionEvent.objects.create(
+                action=locked_action,
+                event_type=event_type,
+                previous_status=current_status,
+                new_status=new_status,
+                reason=reason or "",
+                actor_type=actor_type,
+                actor_id=actor_id,
+                metadata=event_metadata,
+            )
+
+        locked_action.refresh_from_db()
+        return locked_action
+
+    @staticmethod
+    def _transition_error_message(
+        *,
+        attempted: str,
+        current_status: str,
+        expected_status: str,
+    ) -> str:
+        return (
+            f"Cannot perform {attempted} transition from status {current_status!r}; "
+            f"expected {expected_status!r}."
+        )
 
     @staticmethod
     def _validate_scope(

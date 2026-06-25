@@ -1,0 +1,90 @@
+---
+description: Rules for Step 3.1 - Product and Category models, admin CRUD, and Prestia seed data
+globs:
+  - "backend/catalog/**"
+  - "backend/tenants/management/commands/seed_prestia.py"
+  - "docs/phases/step-3.1.md"
+alwaysApply: false
+---
+
+# Step 3.1 Rules — Product & Category CRUD
+
+This rule applies only to Step 3.1 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement only Product and Category foundations for Phase 3.1:
+
+- New `catalog` Django app with generic `Category` and `Product` models
+- Django admin CRUD for both models
+- `seed_prestia` management command (tenant/store skeleton + demo categories and bag products)
+- Tests for tenant/store scoping, uniqueness constraints, and seed idempotency
+- Documentation at `docs/phases/step-3.1.md`
+
+Do not implement sales aggregation, inventory low-stock logic, message models, PII sanitizer, internal AI context APIs, order models, or report/action models in this step.
+
+## Architecture Rules
+
+- Django + Postgres remain the source of truth.
+- All business data must be tenant-scoped.
+- Product and Category records must be generic e-commerce models, not Prestia-specific.
+- Prestia must appear only as seed/demo tenant data in `seed_prestia`, never as hardcoded application logic.
+- Reuse existing `TenantScopedModel` from `tenants.models`.
+- Add explicit `store` foreign keys on both models; do not create duplicate tenant isolation mechanisms.
+- Place models in the `catalog` app; register in `INSTALLED_APPS`.
+
+## Data Modeling Rules
+
+- Category must belong to a tenant and store.
+- Product must belong to a tenant and store.
+- Product should optionally reference Category (`SET_NULL` on category delete).
+- Product SKU must be unique within `(tenant, store)` via database constraint.
+- Slugs must be unique within `(tenant, store)` via database constraint.
+- Use `store.currency` for monetary context; do not add a product-level currency field unless the project already uses one.
+- Use `image_url` (URLField) rather than file uploads unless media storage already exists.
+- Use `metadata` JSONField for flexible agent context.
+- Avoid inventory quantity, order statistics, sales metrics, or message data on Product.
+- Do not add `created_at`/`updated_at` unless a shared audit mixin already exists in the project.
+
+## Admin Rules
+
+- Register Product and Category in `catalog/admin.py`.
+- Admin list views should include tenant, store, name, slug, SKU (products), active status.
+- Admin filters should include tenant, store, category (products), and active status.
+- Admin search should support name, slug, SKU, and description.
+- Use standard `ModelAdmin` (platform operator pattern); no Prestia-specific defaults.
+
+## Seed Rules
+
+- Command path: `backend/tenants/management/commands/seed_prestia.py`
+- The command must be idempotent (`get_or_create` keyed on natural identifiers).
+- Create `Tenant(slug='prestia')` and `Store(slug='main')` skeleton if missing.
+- Create realistic demo categories (Handbags, Shoulder Bags, Backpacks, Wallets, Accessories) and sample bag products.
+- Product seed data must be stored as normal tenant/store records.
+- No Prestia-specific model, branch, service, or hardcoded application rule is allowed outside the seed command data constants.
+
+## Testing Rules
+
+- Add focused tests in `backend/catalog/tests/`:
+  - Category creation under a tenant/store
+  - Product creation under a tenant/store
+  - SKU uniqueness in the correct tenant/store scope
+  - Slug uniqueness in the correct tenant/store scope
+  - `seed_prestia` creates categories and products
+  - `seed_prestia` is idempotent on repeated runs
+- Use generic tenant/store fixtures in model tests (not Prestia).
+- Prefer `django.test.TestCase` and `IntegrityError` assertions for constraints.
+
+## Documentation Rules
+
+Create `docs/phases/step-3.1.md` and include:
+
+- Step title and goal
+- Summary of implemented changes
+- Files created/modified
+- Product and Category model design
+- Tenant/store scoping decisions
+- Admin CRUD behavior
+- Prestia seed data behavior
+- Tests added and how to run them
+- Explicit out-of-scope items deferred to later Phase 3 steps

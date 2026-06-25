@@ -2,10 +2,10 @@ import uuid
 
 from django.db import models
 
-from tenants.models import Tenant
+from tenants.models import Tenant, TenantScopedModel
 
 
-class Store(models.Model):
+class Store(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         Tenant,

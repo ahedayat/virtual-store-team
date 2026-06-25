@@ -1,0 +1,65 @@
+---
+description: Step 1.4 cross-tenant isolation implementation and tests
+globs:
+  - "backend/**"
+  - "docs/phases/step-1.4.md"
+alwaysApply: false
+---
+
+# Step 1.4 — Cross-Tenant Isolation Scope Rule
+
+This rule applies only while implementing Phase 1, Step 1.4.
+
+## Goal
+
+Add focused cross-tenant access denial tests and the minimal tenant-scoped query helpers needed to make those tests meaningful.
+
+## Allowed work
+
+* Add or refine tenant-scoped queryset/manager utilities if they do not already exist.
+* Add a minimal `TenantScopedModel` abstract base only if it fits the existing model structure and does not cause unnecessary schema churn.
+* Add tenant-scoped access helpers such as `for_tenant(...)`, `get_for_tenant(...)`, or equivalent project-consistent APIs.
+* Apply tenant-scoped querying to existing tenant-owned models where appropriate, especially `Store`.
+* Add focused tests proving that a tenant cannot retrieve another tenant's store through the tenant-scoped access path.
+* Add tests for same-slug stores across different tenants if not already covered.
+* Add tests for request-level tenant context integration only if it can be done without building full auth or API layers.
+* Write implementation documentation at `docs/phases/step-1.4.md`.
+
+## Explicitly out of scope
+
+Do not implement these in Step 1.4:
+
+* full dashboard APIs
+* DRF viewsets for stores
+* login/logout APIs
+* service JWT authentication
+* internal AI APIs
+* custom user model unless it already exists and only needs minor integration
+* full RBAC or object permission framework
+* product, order, inventory, message, report, action, or agent models
+* `seed_prestia` command
+* subdomain tenant resolution
+* Prestia-specific business logic or hardcoded demo data
+
+## Design constraints
+
+* Cross-tenant access must be denied by default when using the tenant-scoped access path.
+* A tenant-scoped query for Tenant A must never return Store records from Tenant B.
+* Missing or `None` tenant context must return an empty queryset or safe denial, not unrestricted data.
+* Tests must be deterministic and isolated.
+* Keep the implementation minimal and compatible with later Phase 2 authentication work.
+* Do not introduce broad architectural changes beyond what is required for Phase 1.4.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.4.md` and include:
+
+* Step goal
+* Scope implemented
+* Files changed
+* Tenant isolation strategy
+* Queryset/manager/helper behavior
+* Cross-tenant denial test cases
+* Commands used to run checks/tests
+* Explicit out-of-scope items
+* Notes for Phase 2

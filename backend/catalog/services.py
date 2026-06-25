@@ -1,110 +1,85 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone as dt_timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
-from catalog.models import Order, OrderItem, REVENUE_ELIGIBLE_ORDER_STATUSES
+from catalog.models import Order, OrderItem, REVENUE_COUNTABLE_ORDER_STATUSES
 from stores.models import Store
 
-TOP_PRODUCTS_LIMIT = 5
-MONEY_QUANTIZE = Decimal("0.01")
+
+@dataclass(frozen=True)
+class PeriodBounds:
+    start: datetime
+    end: datetime
 
 
-def _quantize_money(value: Decimal) -> Decimal:
-    return value.quantize(MONEY_QUANTIZE, rounding=ROUND_HALF_UP)
-
-
-def _format_money(value: Decimal) -> str:
-    return format(_quantize_money(value), "f")
-
-
-def _store_timezone(store: Store) -> ZoneInfo:
+def get_store_timezone(store: Store) -> ZoneInfo:
     try:
         return ZoneInfo(store.timezone)
     except Exception:
         return ZoneInfo("UTC")
 
 
-def _period_bounds(
-    store: Store,
-    *,
-    start_day_offset: int,
-    end_day_offset: int,
-    now: datetime | None = None,
-) -> tuple[datetime, datetime]:
-    """Return [start, end) bounds in UTC for store-local calendar day offsets.
-
-    ``start_day_offset`` and ``end_day_offset`` are relative to the store's
-    current local calendar day (0 = today). ``end_day_offset`` is inclusive
-    for the last local day included in the range.
-    """
-    tz = _store_timezone(store)
-    local_now = (now or timezone.now()).astimezone(tz)
-    local_today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-    period_start = local_today_start + timedelta(days=start_day_offset)
-    period_end = local_today_start + timedelta(days=end_day_offset + 1)
-    return period_start.astimezone(timezone.utc), period_end.astimezone(timezone.utc)
-
-
-def _eligible_orders_queryset(store: Store, period_start, period_end):
-    return Order.objects.filter(
-        tenant_id=store.tenant_id,
-        store_id=store.id,
-        status__in=REVENUE_ELIGIBLE_ORDER_STATUSES,
-        placed_at__gte=period_start,
-        placed_at__lt=period_end,
-    )
-
-
-def _aggregate_period(store: Store, period_start, period_end) -> dict:
-    orders = _eligible_orders_queryset(store, period_start, period_end)
-    order_stats = orders.aggregate(
-        total_revenue=Sum("total_amount"),
-        order_count=Count("id"),
-    )
-    total_revenue = order_stats["total_revenue"] or Decimal("0.00")
-    order_count = order_stats["order_count"] or 0
-
-    item_stats = OrderItem.objects.filter(
-        tenant_id=store.tenant_id,
-        store_id=store.id,
-        order__status__in=REVENUE_ELIGIBLE_ORDER_STATUSES,
-        order__placed_at__gte=period_start,
-        order__placed_at__lt=period_end,
-    ).aggregate(units_sold=Sum("quantity"))
-    units_sold = item_stats["units_sold"] or 0
-
-    if order_count:
-        average_order_value = _quantize_money(total_revenue / order_count)
-    else:
-        average_order_value = Decimal("0.00")
-
-    top_products = _top_products_for_period(store, period_start, period_end)
+def get_period_bounds(store: Store, reference: datetime | None = None) -> dict[str, PeriodBounds]:
+    """Return timezone-aware UTC boundaries for today and the last 7 calendar days."""
+    reference = reference or timezone.now()
+    store_tz = get_store_timezone(store)
+    local_now = reference.astimezone(store_tz)
+    today_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end_local = today_start_local + timedelta(days=1)
+    last_7_start_local = today_start_local - timedelta(days=6)
 
     return {
-        "from": period_start.isoformat(),
-        "to": period_end.isoformat(),
-        "total_revenue": _format_money(total_revenue),
-        "order_count": order_count,
-        "units_sold": units_sold,
-        "average_order_value": _format_money(average_order_value),
-        "top_products": top_products,
+        "today": PeriodBounds(
+            start=today_start_local.astimezone(dt_timezone.utc),
+            end=today_end_local.astimezone(dt_timezone.utc),
+        ),
+        "last_7_days": PeriodBounds(
+            start=last_7_start_local.astimezone(dt_timezone.utc),
+            end=today_end_local.astimezone(dt_timezone.utc),
+        ),
     }
 
 
-def _top_products_for_period(store: Store, period_start, period_end) -> list[dict]:
-    rows = (
-        OrderItem.objects.filter(
-            tenant_id=store.tenant_id,
-            store_id=store.id,
-            order__status__in=REVENUE_ELIGIBLE_ORDER_STATUSES,
-            order__placed_at__gte=period_start,
-            order__placed_at__lt=period_end,
-        )
+def _average_order_value(total_revenue: Decimal, order_count: int) -> Decimal:
+    if order_count == 0:
+        return Decimal("0.00")
+    return (total_revenue / order_count).quantize(Decimal("0.01"))
+
+
+def _serialize_period(
+    store: Store,
+    bounds: PeriodBounds,
+    *,
+    top_products_limit: int = 5,
+) -> dict:
+    countable_orders = Order.objects.filter(
+        tenant=store.tenant,
+        store=store,
+        status__in=REVENUE_COUNTABLE_ORDER_STATUSES,
+        placed_at__gte=bounds.start,
+        placed_at__lt=bounds.end,
+    )
+
+    order_count = countable_orders.count()
+    total_revenue = countable_orders.aggregate(
+        total=Sum("total_amount", default=Decimal("0.00"))
+    )["total"]
+
+    units_sold = (
+        OrderItem.objects.filter(order__in=countable_orders).aggregate(
+            total=Sum("quantity", default=0)
+        )["total"]
+        or 0
+    )
+
+    top_products_qs = (
+        OrderItem.objects.filter(order__in=countable_orders)
         .values(
             "product_id",
             "product_name_snapshot",
@@ -115,43 +90,43 @@ def _top_products_for_period(store: Store, period_start, period_end) -> list[dic
             quantity_sold=Sum("quantity"),
             revenue=Sum("line_total"),
         )
-        .order_by("-revenue", "-quantity_sold")[:TOP_PRODUCTS_LIMIT]
+        .order_by("-revenue", "-quantity_sold")[:top_products_limit]
     )
 
-    top_products = []
-    for row in rows:
-        entry = {
+    top_products = [
+        {
             "product_id": str(row["product_id"]),
             "name": row["product_name_snapshot"],
             "sku": row["sku_snapshot"],
-            "quantity_sold": row["quantity_sold"] or 0,
-            "revenue": _format_money(row["revenue"] or Decimal("0.00")),
+            "quantity_sold": row["quantity_sold"],
+            "revenue": row["revenue"],
+            "category": row["product__category__name"] or None,
         }
-        category_name = row["product__category__name"]
-        if category_name:
-            entry["category"] = category_name
-        top_products.append(entry)
-    return top_products
-
-
-def build_sales_summary(store: Store, *, now: datetime | None = None) -> dict:
-    """Build timezone-aware sales summary for today and the last 7 days."""
-    today_start, today_end = _period_bounds(store, start_day_offset=0, end_day_offset=0, now=now)
-    last_7_start, last_7_end = _period_bounds(
-        store,
-        start_day_offset=-6,
-        end_day_offset=0,
-        now=now,
-    )
-
-    generated_at = (now or timezone.now()).astimezone(timezone.utc)
+        for row in top_products_qs
+    ]
 
     return {
-        "generated_at": generated_at.isoformat(),
+        "from": bounds.start.isoformat(),
+        "to": bounds.end.isoformat(),
+        "total_revenue": total_revenue,
+        "order_count": order_count,
+        "units_sold": units_sold,
+        "average_order_value": _average_order_value(total_revenue, order_count),
+        "top_products": top_products,
+    }
+
+
+def build_sales_summary(store: Store, reference: datetime | None = None) -> dict:
+    """Build tenant/store-scoped sales summary for today and the last 7 days."""
+    bounds = get_period_bounds(store, reference=reference)
+    generated_at = (reference or timezone.now()).isoformat()
+
+    return {
+        "generated_at": generated_at,
         "store_id": str(store.id),
         "currency": store.currency,
         "periods": {
-            "today": _aggregate_period(store, today_start, today_end),
-            "last_7_days": _aggregate_period(store, last_7_start, last_7_end),
+            "today": _serialize_period(store, bounds["today"]),
+            "last_7_days": _serialize_period(store, bounds["last_7_days"]),
         },
     }

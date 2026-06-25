@@ -19,7 +19,7 @@ class OrderStatus(models.TextChoices):
     FAILED = "failed", "Failed"
 
 
-REVENUE_ELIGIBLE_ORDER_STATUSES = frozenset(
+REVENUE_COUNTABLE_ORDER_STATUSES = frozenset(
     {
         OrderStatus.PAID,
         OrderStatus.COMPLETED,
@@ -143,11 +143,7 @@ class Order(TenantScopedModel):
     )
     currency = models.CharField(max_length=3)
     subtotal_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    discount_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-    )
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     placed_at = models.DateTimeField(default=timezone.now)
     external_customer_ref = models.CharField(max_length=127, blank=True)
@@ -178,8 +174,8 @@ class Order(TenantScopedModel):
             raise ValidationError({"store": "Store must belong to the same tenant."})
 
     @property
-    def is_revenue_eligible(self):
-        return self.status in REVENUE_ELIGIBLE_ORDER_STATUSES
+    def is_revenue_countable(self):
+        return self.status in REVENUE_COUNTABLE_ORDER_STATUSES
 
     def __str__(self):
         return f"{self.order_number} ({self.store.name})"
@@ -234,14 +230,8 @@ class OrderItem(TenantScopedModel):
             raise ValidationError({"store": "Store must belong to the same tenant."})
         if self.order_id and self.store_id and self.order.store_id != self.store_id:
             raise ValidationError({"order": "Order must belong to the same store."})
-        if (
-            self.product_id
-            and self.store_id
-            and self.product.store_id != self.store_id
-        ):
-            raise ValidationError(
-                {"product": "Product must belong to the same store."}
-            )
+        if self.product_id and self.store_id and self.product.store_id != self.store_id:
+            raise ValidationError({"product": "Product must belong to the same store."})
 
     def __str__(self):
         return f"{self.sku_snapshot} x{self.quantity} ({self.order.order_number})"

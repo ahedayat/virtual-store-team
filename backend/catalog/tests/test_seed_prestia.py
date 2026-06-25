@@ -1,7 +1,7 @@
 from django.core.management import call_command
 from django.test import TestCase
 
-from catalog.models import Category, Product
+from catalog.models import Category, Order, OrderItem, Product
 from stores.models import Store
 from tenants.models import Tenant
 
@@ -34,3 +34,28 @@ class SeedPrestiaCommandTests(TestCase):
         self.assertEqual(Store.objects.filter(slug="main").count(), store_count)
         self.assertEqual(Category.objects.count(), category_count)
         self.assertEqual(Product.objects.count(), product_count)
+
+    def test_seed_prestia_creates_orders_and_order_items(self):
+        call_command("seed_prestia")
+
+        tenant = Tenant.objects.get(slug="prestia")
+        store = Store.objects.get(tenant=tenant, slug="main")
+        orders = Order.objects.filter(tenant=tenant, store=store)
+
+        self.assertGreaterEqual(orders.count(), 7)
+        self.assertGreaterEqual(
+            OrderItem.objects.filter(tenant=tenant, store=store).count(),
+            10,
+        )
+        self.assertTrue(orders.filter(status="cancelled").exists())
+        self.assertTrue(orders.filter(status="draft").exists())
+
+    def test_seed_prestia_orders_are_idempotent(self):
+        call_command("seed_prestia")
+        order_count = Order.objects.count()
+        order_item_count = OrderItem.objects.count()
+
+        call_command("seed_prestia")
+
+        self.assertEqual(Order.objects.count(), order_count)
+        self.assertEqual(OrderItem.objects.count(), order_item_count)

@@ -1,0 +1,131 @@
+---
+description: Rules for Step 3.2 - Sales aggregation queries and internal AI sales summary API
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-3.2.md"
+alwaysApply: false
+---
+
+# Step 3.2 Rules — Sales Aggregation Queries
+
+This rule applies only to Step 3.2 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement Phase 3.2 only:
+
+- Generic order and order item data needed for sales aggregation
+- Sales aggregation queries for:
+  - today
+  - last 7 days
+- Internal AI-facing sales summary endpoint
+- Prestia demo sales seed data
+- Tests for tenant/store scoping and aggregation correctness
+- Documentation at `docs/phases/step-3.2.md`
+
+Do not implement low-stock inventory logic, inventory models unless they already exist and are required by existing code, message ingest models, PII sanitizer, customer PII export, full AI context bundle, reports, actions, Celery tasks, or agent logic in this step.
+
+## Architecture Rules
+
+- Django + Postgres remain the source of truth.
+- AI services must access sales data only through Django internal APIs.
+- All business data must be tenant-scoped and store-scoped.
+- Reuse existing tenant/store abstractions, base models, managers, authentication classes, serializers, URL conventions, and test patterns.
+- Do not create Prestia-specific application logic.
+- Prestia data must be normal seed/demo data only.
+
+## Data Modeling Rules
+
+- Add or reuse generic e-commerce order models.
+- If order models do not already exist, add minimal models needed for sales aggregation:
+  - Order
+  - OrderItem
+- Orders must belong to tenant and store.
+- OrderItems must belong to an order and product.
+- Avoid raw customer PII in this step.
+- If a customer reference is needed for demo data, use a non-PII field such as `customer_ref`, `external_customer_ref`, or an opaque demo reference.
+- Do not implement the full Customer model with phone/email/address in this step unless the repository already has a clear pattern and it is strictly necessary.
+- Do not implement inventory quantities here. Inventory is Step 3.3.
+- Monetary fields must use DecimalField, not float.
+- Order status must be explicit enough to exclude cancelled/refunded/draft orders from revenue calculations.
+- Aggregations should count only completed/paid/fulfilled orders according to the chosen model status semantics.
+
+## Sales Aggregation Rules
+
+The sales summary should include at least:
+
+- Period boundaries
+- Total revenue
+- Order count
+- Units sold
+- Average order value
+- Top products by revenue and/or quantity
+- Low performers or products with zero/low sales when practical
+- Currency
+- Generated timestamp
+
+Required periods:
+
+- today
+- last 7 days
+
+Use timezone-aware date boundaries based on the store timezone where possible.
+
+## Internal API Rules
+
+- Add an internal AI endpoint similar to:
+  - `GET /internal/ai/stores/<store_id>/sales/summary/`
+- The endpoint must require existing internal AI/service JWT authentication.
+- The endpoint must validate tenant and store scope from the service JWT.
+- Cross-tenant or cross-store access must be rejected.
+- The response must not include raw customer PII.
+- The response should be structured and stable enough for future sales-agent consumption.
+
+## Seed Rules
+
+- Extend the existing `seed_prestia` command.
+- Add realistic demo orders and order items for Prestia products.
+- Include orders from today and the last 7 days.
+- Include enough variation to make aggregation meaningful:
+  - multiple products
+  - multiple order dates
+  - different quantities
+  - at least one cancelled or non-countable order if useful for tests
+- The seed command must be idempotent.
+
+## Testing Rules
+
+Add focused tests for:
+
+- Order and OrderItem creation under tenant/store scope
+- Sales summary for today
+- Sales summary for last 7 days
+- Cancelled/draft/refunded orders are excluded from revenue if those statuses exist
+- Top products are calculated correctly
+- Internal sales summary endpoint requires service JWT
+- Internal sales summary endpoint rejects cross-tenant or cross-store access
+- Prestia seed creates orders and order items idempotently
+
+## Documentation Rules
+
+Create `docs/phases/step-3.2.md` and include:
+
+- Step title and goal
+- Summary of implemented changes
+- Files created/modified
+- Order and OrderItem model design
+- Sales aggregation design
+- Internal API endpoint contract
+- Tenant/store scoping decisions
+- Prestia sales seed behavior
+- Tests added
+- How to run seed command
+- How to run relevant tests
+- Explicit out-of-scope items deferred to later steps:
+  - low-stock inventory query
+  - message ingest model
+  - PII sanitizer
+  - full AI context endpoint
+  - reports/actions
+  - Celery orchestration
+  - agent implementation

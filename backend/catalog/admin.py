@@ -6,7 +6,7 @@ from catalog.models import Category, Order, OrderItem, Product
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
-    readonly_fields = ("id", "line_total")
+    readonly_fields = ("id",)
     fields = (
         "product",
         "product_name_snapshot",
@@ -22,6 +22,31 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "tenant", "store", "is_active")
     list_filter = ("tenant", "store", "is_active")
     search_fields = ("name", "slug", "description", "tenant__name", "tenant__slug")
+    ordering = ("tenant", "store", "name")
+    readonly_fields = ("id",)
+
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "sku",
+        "slug",
+        "tenant",
+        "store",
+        "category",
+        "price",
+        "is_active",
+    )
+    list_filter = ("tenant", "store", "category", "is_active")
+    search_fields = (
+        "name",
+        "slug",
+        "sku",
+        "description",
+        "tenant__name",
+        "tenant__slug",
+    )
     ordering = ("tenant", "store", "name")
     readonly_fields = ("id",)
 
@@ -71,29 +96,4 @@ class OrderItemAdmin(admin.ModelAdmin):
         "tenant__slug",
     )
     ordering = ("-order__placed_at", "sku_snapshot")
-    readonly_fields = ("id", "line_total")
-
-
-@admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    list_display = (
-        "name",
-        "sku",
-        "slug",
-        "tenant",
-        "store",
-        "category",
-        "price",
-        "is_active",
-    )
-    list_filter = ("tenant", "store", "category", "is_active")
-    search_fields = (
-        "name",
-        "slug",
-        "sku",
-        "description",
-        "tenant__name",
-        "tenant__slug",
-    )
-    ordering = ("tenant", "store", "name")
     readonly_fields = ("id",)

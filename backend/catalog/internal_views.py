@@ -9,7 +9,7 @@ from stores.models import Store
 from tenants.models import Tenant
 
 
-class InternalAISalesSummaryView(APIView):
+class InternalSalesSummaryView(APIView):
     """Internal AI sales summary for a store (today and last 7 days)."""
 
     authentication_classes = [InternalAIAuthentication]
@@ -17,19 +17,19 @@ class InternalAISalesSummaryView(APIView):
 
     def get(self, request, store_id):
         identity = request.ai_service
+        store_id_str = str(store_id)
 
-        if str(store_id) != identity.store_id:
-            raise PermissionDenied("Store scope does not match service token.")
+        if store_id_str != identity.store_id:
+            raise PermissionDenied("Service token store does not match the requested store.")
 
         try:
-            tenant = Tenant.objects.get(id=identity.tenant_id)
+            tenant = Tenant.objects.get(pk=identity.tenant_id)
         except Tenant.DoesNotExist as exc:
             raise NotFound("Store not found.") from exc
 
         try:
-            store = Store.objects.get_for_tenant(tenant, id=store_id)
+            store = Store.objects.get_for_tenant(tenant, pk=store_id)
         except Store.DoesNotExist as exc:
             raise NotFound("Store not found.") from exc
 
-        summary = build_sales_summary(store)
-        return Response(summary)
+        return Response(build_sales_summary(store))

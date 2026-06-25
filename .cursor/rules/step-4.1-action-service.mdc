@@ -1,0 +1,78 @@
+---
+description: Phase 4.1 rules for implementing ActionService.create_from_agent_payload
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-4.1.md"
+alwaysApply: false
+---
+
+# Step 4.1 — Action Creation Service Rules
+
+This rule applies only to Phase 4.1 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement only the first subtask of Phase 4:
+
+- `ActionService.create_from_agent_payload()`
+
+Do not implement later Phase 4 subtasks in this step:
+
+- Do not implement `ActionService.approve()`
+- Do not implement `ActionService.reject()`
+- Do not implement `ActionService.queue_execution()`
+- Do not implement `/internal/ai/actions/`
+- Do not implement `/internal/ai/agent-outputs/`
+- Do not implement `/internal/ai/report-runs/{id}/complete/`
+- Do not implement `/api/history/`
+- Do not implement real external side effects
+
+## Architecture Rules
+
+- Django and Postgres remain the source of truth.
+- All created actions must be tenant-scoped and store-scoped.
+- Never trust `tenant_id` or `store_id` from agent payloads directly.
+- Tenant and store must come from trusted server-side context or validated model instances.
+- Agents may propose actions, but they must not approve, reject, or execute them.
+- Action creation must not trigger external integrations.
+- Action creation must create an audit/event record.
+- Keep implementation generic; do not hardcode Prestia-specific logic.
+
+## Action Lifecycle Rules
+
+When an agent payload is converted into an Action:
+
+- Validate required fields.
+- Normalize `action_type`, `agent_name`, `priority`, `requires_approval`, and `payload`.
+- Apply default action policy by action type when `requires_approval` is not explicitly provided.
+- If the action requires approval, initial actionable status should be `pending_approval`.
+- If the action is auto-executable by policy, initial actionable status should be `queued`.
+- Record an `ActionEvent` describing the creation decision.
+- Do not execute queued actions in this step.
+
+## Testing Rules
+
+Add or update tests for:
+
+- Creating approval-required actions.
+- Creating auto-executable actions.
+- Rejecting invalid action payloads.
+- Tenant/store scoping.
+- ActionEvent creation.
+- Default policy behavior by action type.
+
+## Documentation Rules
+
+Create or update:
+
+- `docs/phases/step-4.1.md`
+
+The documentation must explain:
+
+- What was implemented.
+- What was intentionally not implemented.
+- Action payload format.
+- Initial status decision rules.
+- Files changed.
+- Tests added.
+- Validation commands.

@@ -6,6 +6,7 @@ import json
 from typing import Any, Mapping
 
 from agents.content.brand_voice import BrandVoice, extract_brand_voice
+from agents.content.draft_limit import resolve_max_drafts_per_run
 from agents.shared.language import build_language_prompt_prefix
 
 ALLOWED_CONTENT_ACTION_TYPES: tuple[str, ...] = (
@@ -80,12 +81,24 @@ def _campaign_angle_section(campaign_angle: str | None) -> str:
     )
 
 
-def _draft_output_section() -> str:
+def _draft_limit_section(max_drafts: int) -> str:
+    return "\n".join(
+        [
+            "Draft count limit:",
+            f"- Produce at most {max_drafts} draft suggestion(s) in this run.",
+            "- Prioritize the strongest product or campaign fits if context exceeds this limit.",
+            "- Code enforcement may trim excess drafts; stay within this count when possible.",
+        ]
+    )
+
+
+def _draft_output_section(max_drafts: int) -> str:
     allowed = ", ".join(ALLOWED_CONTENT_ACTION_TYPES)
     fields = ", ".join(DRAFT_REQUIRED_FIELDS)
     return "\n".join(
         [
             "Draft output contract:",
+            f"- Return no more than {max_drafts} draft object(s) in the drafts array for this run.",
             "- Produce concise, manager-friendly drafts intended for human review and approval.",
             "- Map each draft to one of these action_type values:",
             f"  - {ALLOWED_CONTENT_ACTION_TYPES[0]} — Instagram caption or post draft.",
@@ -144,10 +157,15 @@ def build_content_draft_system_prompt(
     currency: str | None = None,
     campaign_angle: str | None = None,
     output_language: str | None = None,
+    max_drafts_per_run: int | None = None,
 ) -> str:
     """Build the system prompt for Instagram and product description draft generation."""
     brand_voice = extract_brand_voice(store_settings)
     language_instruction = build_language_prompt_prefix(output_language)
+    resolved_max_drafts = resolve_max_drafts_per_run(
+        request_max_drafts=max_drafts_per_run,
+        store_settings=store_settings,
+    )
 
     sections = [
         _role_and_scope_section(),
@@ -159,7 +177,8 @@ def build_content_draft_system_prompt(
         _brand_voice_section(brand_voice),
         _data_access_section(),
         _campaign_angle_section(campaign_angle),
-        _draft_output_section(),
+        _draft_limit_section(resolved_max_drafts),
+        _draft_output_section(resolved_max_drafts),
         _safety_and_guardrails_section(),
     ]
     return "\n\n".join(sections)
@@ -175,6 +194,7 @@ def build_content_draft_messages(
     products: list[Mapping[str, Any]] | None = None,
     campaign_angle: str | None = None,
     output_language: str | None = None,
+    max_drafts_per_run: int | None = None,
 ) -> list[dict[str, str]]:
     """Build chat messages for the shared LLM abstraction (no provider calls)."""
     store_context = store_context or {}
@@ -196,6 +216,7 @@ def build_content_draft_messages(
         currency=currency,
         campaign_angle=campaign_angle,
         output_language=output_language,
+        max_drafts_per_run=max_drafts_per_run,
     )
 
     user_payload: dict[str, Any] = {

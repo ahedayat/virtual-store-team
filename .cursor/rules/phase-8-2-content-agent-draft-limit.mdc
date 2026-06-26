@@ -1,0 +1,38 @@
+---
+description: Phase 8.2 — Content Agent draft limit per run
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "docs/phases/step-8.2.md"
+alwaysApply: false
+---
+
+# Phase 8.2 — Content Agent Draft Limit Rules
+
+This rule applies only to Step 8.2 of Phase 8.
+
+## Scope
+
+Implement a deterministic maximum draft limit for the Content Agent per run.
+
+## Rules
+
+1. Draft limiting must be enforced in code after the model or mock result is parsed, not only in the LLM prompt.
+2. Do not rely only on prompt instructions to limit draft count.
+3. Use a configurable limit with a safe default of 3 drafts per run for MVP.
+4. Prefer this resolution order when practical:
+   - request-level override, if already supported and validated
+   - `store.settings.content_agent.max_drafts_per_run`
+   - environment/default settings (`CONTENT_AGENT_MAX_DRAFTS_PER_RUN`)
+   - hard fallback: 3
+5. Validate the configured limit defensively:
+   - missing value -> 3
+   - non-integer value -> skip source or fall back to 3 when no valid source remains
+   - value less than 1 -> 1
+   - excessively high value -> clamp to a small MVP-safe upper bound, e.g. 5
+6. The limit must apply across all generated content suggestions for the run unless the existing schema clearly separates caption drafts and product description drafts.
+7. Do not introduce real Instagram publishing or external side effects.
+8. Do not implement full Phase 8.3 schema-validation expansion in this step, except focused tests needed for draft limiting.
+9. Keep the Content Agent generic and multi-tenant. Do not hardcode Prestia-specific behavior.
+10. All content actions must remain reviewable and approval-required in intent.
+11. Update `docs/phases/step-8.2.md` with implementation details, validation commands, and deferred work.

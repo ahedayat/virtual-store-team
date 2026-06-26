@@ -1,0 +1,125 @@
+---
+description: Phase 1.8 guardrail for tenant scoping contract finalization only
+globs:
+  - "backend/tenants/**"
+  - "backend/stores/**"
+  - "backend/accounts/**"
+  - "backend/**/views.py"
+  - "backend/**/viewsets.py"
+  - "backend/**/serializers.py"
+  - "backend/**/urls.py"
+  - "backend/**/tests/**"
+  - "docs/phases/step-0.0.md"
+  - "docs/phases/step-1.8.md"
+alwaysApply: false
+---
+
+# Phase 1.8 — Tenant Scoping Contract Finalization
+
+This rule applies only when working on Phase 1.8.
+
+## Goal
+
+Finalize and document the tenant scoping contract for the MVP.
+
+This step resolves the wording mismatch between:
+
+* "automatic tenant filtering"
+* explicit tenant-scoped access through approved manager/queryset methods
+
+## Accepted MVP contract
+
+For the MVP, explicit tenant-scoped access is acceptable if all tenant-facing code paths use safe scoped accessors such as:
+
+* `for_tenant`
+* `get_for_tenant`
+* `for_request`
+* equivalent tenant-scoped query helpers
+
+Unscoped access may remain available only for intentional admin/system-level paths.
+
+## Required outcome
+
+By the end of this step:
+
+* The tenant scoping contract is explicit.
+* Tenant-facing API/public paths must not rely on unsafe unscoped lookups.
+* Admin/system escape hatches must be intentional and documented.
+* The project must not ambiguously require undefined automatic default-manager filtering.
+* `docs/phases/step-1.8.md` must document the final contract and verification.
+
+## Allowed work
+
+You may:
+
+* Inspect `docs/phases/step-0.0.md`, especially Phase 1.8.
+* Inspect tenant scoping primitives in `tenants`, `stores`, and related apps.
+* Inspect tenant-facing API/public code paths.
+* Inspect admin/system code paths where unscoped access may be intentional.
+* Add or improve tests proving tenant-facing paths use scoped access.
+* Make small targeted fixes if an unsafe tenant-facing unscoped lookup is found.
+* Add comments only when they clarify admin/system escape hatch intent.
+* Create `docs/phases/step-1.8.md`.
+
+## Verification focus
+
+Search for potentially unsafe tenant-facing ORM patterns such as:
+
+* `Store.objects.get(`
+* `Store.objects.filter(`
+* `Store.objects.all(`
+* unscoped tenant-owned model access in API/public views
+
+Then classify each usage as either:
+
+* safe because it uses tenant-scoped access,
+* safe because it is admin/system-level and intentional,
+* unsafe and must be fixed in this step.
+
+## Strict boundaries
+
+Do not:
+
+* Implement Phase 1.9 final verification.
+* Implement Phase 2 authentication.
+* Modify `seed_prestia`.
+* Add new business features.
+* Add new broad CRUD APIs.
+* Rewrite tenant middleware unless a direct unsafe tenant-facing path requires a small fix.
+* Convert the entire project to automatic default-manager tenant filtering unless absolutely required and explicitly justified.
+* Refactor unrelated apps.
+* Modify frontend code.
+* Modify agent code.
+* Make broad formatting-only changes.
+* Rewrite migrations unless absolutely necessary and justified.
+
+## Required verification
+
+At minimum, run:
+
+* Relevant tenant scoping tests.
+* Store API tenant isolation tests from Phase 1.6.
+* Relevant `stores`, `tenants`, and `accounts` tests.
+* `python manage.py makemigrations --check --dry-run`.
+
+Use the repository's normal execution style. If Docker Compose is the standard workflow, run commands inside the backend container.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.8.md` with:
+
+* Goal
+* Scope
+* Background / ambiguity being resolved
+* Final tenant scoping contract
+* Approved tenant-facing access patterns
+* Admin/system escape hatch policy
+* Audit of tenant-facing access paths
+* Files changed
+* Tests added or verified
+* Verification commands and results
+* Acceptance criteria checklist
+* Non-goals
+* Next step: Phase 1.9 — Phase 1 Final Verification & Closure
+
+The documentation must clearly state that Phase 1.8 finalizes the contract only and does not close Phase 1. Phase 1.9 remains required.

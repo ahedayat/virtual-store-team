@@ -1253,38 +1253,193 @@ Phase 3 (Store Data, PII & Internal Read APIs) may proceed.
 
 ### Phase 4 — Actions, Reports & History
 
-**Goal:** Persist reports, agent outputs, and action lifecycle in Django.
+**Goal:** Persist reports, agent outputs, and action lifecycle in Django; expose dashboard read APIs and manager approve/reject endpoints.
 
-**Deliverables:**
+**Status:** Complete — subphases **4.1–4.9** are implemented, verified, and documented in `docs/phases/step-4.1.md` through `docs/phases/step-4.9.md`.
+
+**Deliverables (full Phase 4 scope):**
 
 - Models: `ReportRun`, `DailyReport`, `AgentOutput`, `Action`, `ActionEvent` (audit)
-- State transition service for actions
-- Dashboard APIs (read) for reports and actions
-- Approve/reject endpoints
-
-**Tasks:**
-
-1. Implement action state machine
-2. ReportRun lifecycle
-3. History/timeline endpoint
-4. Action policy defaults per type
-
-**Subtasks:**
-
-- 4.1 `ActionService.create_from_agent_payload()`
-- 4.2 `ActionService.approve()`, `.reject()`, `.queue_execution()`
-- 4.3 `POST /internal/ai/actions/`, `POST /internal/ai/agent-outputs/`
-- 4.4 `POST /internal/ai/report-runs/{id}/complete/`
-- 4.5 `GET /api/history/` unified feed
+- `ActionService` state transition service (create, approve, reject, queue execution)
+- Internal AI write APIs: actions, agent outputs, report run completion
+- Dashboard history feed: `GET /api/history/`
+- Dashboard report read APIs: `GET /api/reports/`, `GET /api/reports/{id}/`
+- Dashboard action read APIs: `GET /api/actions/`, `GET /api/actions/{id}/`
+- Manager approve/reject APIs: `POST /api/actions/{id}/approve/`, `POST /api/actions/{id}/reject/`
+- Final verification documented in `docs/phases/step-4.9.md`
 
 **Dependencies:** Phase 3
 
-**Acceptance criteria:**
+**Subphases:**
+
+#### Completed (4.1–4.9)
+
+| Subphase | Name | Summary |
+|----------|------|---------|
+| **4.1** | Action creation service | `ActionService.create_from_agent_payload()` with policy defaults, tenant/store scoping, and `ActionEvent` audit on create. Documented in `docs/phases/step-4.1.md`. |
+| **4.2** | Action state transitions | `ActionService.approve()`, `.reject()`, `.queue_execution()` with strict state machine and audit events. Documented in `docs/phases/step-4.2.md`. |
+| **4.3** | Internal AI write APIs | `POST /internal/ai/actions/`, `POST /internal/ai/agent-outputs/` delegating to service layer. Documented in `docs/phases/step-4.3.md`. |
+| **4.4** | Report run completion | `POST /internal/ai/report-runs/{id}/complete/` via `ReportRunService`. Documented in `docs/phases/step-4.4.md`. |
+| **4.5** | Unified history feed | `GET /api/history/` tenant/store-scoped timeline from existing records. Documented in `docs/phases/step-4.5.md`. |
+| **4.6** | Dashboard reports read APIs | `GET /api/reports/`, `GET /api/reports/{id}/` with pagination, newest-first ordering, and safe summaries. Documented in `docs/phases/step-4.6.md`. |
+| **4.7** | Dashboard actions read APIs | `GET /api/actions/`, `GET /api/actions/{id}/` with status/type/agent/date filters and safe payload summaries. Documented in `docs/phases/step-4.7.md`. |
+| **4.8** | Manager approve/reject APIs | `POST /api/actions/{id}/approve/`, `POST /api/actions/{id}/reject/` delegating to `ActionService`. Documented in `docs/phases/step-4.8.md`. |
+| **4.9** | Phase 4 alignment & verification | Full Phase 4 deliverable checklist, test verification, and closure. Documented in `docs/phases/step-4.9.md`. |
+
+#### Subphase reference (4.1–4.9 detail)
+
+**4.1 — Action Creation Service**
+
+*Implemented:*
+
+- `ActionService.create_from_agent_payload()` with payload validation and default action policy
+- Initial status `pending_approval` or `queued` based on policy
+- `ActionEvent` audit record on creation
+- Tenant/store scoping from trusted server context
+
+*Documented in:* `docs/phases/step-4.1.md`
+
+**4.2 — Action State Transitions**
+
+*Implemented:*
+
+- `ActionService.approve()` — `pending_approval` → `approved`
+- `ActionService.reject()` — `pending_approval` → `rejected`
+- `ActionService.queue_execution()` — `approved` → `queued`
+- `ActionEvent` audit trail for every transition
+- `decided_by` / `decided_at` on human decisions
+
+*Documented in:* `docs/phases/step-4.2.md`
+
+**4.3 — Internal AI Write APIs**
+
+*Implemented:*
+
+- `POST /internal/ai/actions/` — agent action proposals via `ActionService.create_from_agent_payload()`
+- `POST /internal/ai/agent-outputs/` — structured agent output persistence
+- Service JWT authentication; tenant/store from token, not request body
+
+*Documented in:* `docs/phases/step-4.3.md`
+
+**4.4 — Report Run Completion**
+
+*Implemented:*
+
+- `POST /internal/ai/report-runs/{id}/complete/` — coordinator completes a running report run
+- `DailyReport` persistence and `ReportRun` → `completed` in one transaction
+- Referenced agent outputs and actions validated for tenant/store scope
+
+*Documented in:* `docs/phases/step-4.4.md`
+
+**4.5 — Unified History Feed**
+
+*Implemented:*
+
+- `GET /api/history/` — dashboard-facing unified timeline
+- Aggregates `ReportRun`, `DailyReport`, `AgentOutput`, `Action`, `ActionEvent`
+- Session authentication, tenant/store scoping, filtering, pagination, PII-safe summaries
+
+*Documented in:* `docs/phases/step-4.5.md`
+
+**4.6 — Dashboard Reports Read APIs**
+
+*Implemented:*
+
+- `GET /api/reports/` — paginated report run list (newest first)
+- `GET /api/reports/{id}/` — report run detail with daily report section summaries
+- Session authentication consistent with other dashboard APIs
+- Tenant/store scoping; cross-tenant/cross-store returns `404`
+- Read-only serializers; no raw sensitive payloads
+
+*Acceptance criteria:*
+
+- Authenticated manager/user can list and retrieve scoped reports
+- Unauthenticated and service JWT requests are rejected
+- Pagination matches existing dashboard conventions (`limit`/`offset`)
+- Focused API tests pass
+
+*Documented in:* `docs/phases/step-4.6.md`
+
+**4.7 — Dashboard Actions Read APIs**
+
+*Implemented:*
+
+- `GET /api/actions/` — paginated action list (newest first)
+- `GET /api/actions/{id}/` — action detail for manager approval dashboard
+- Filters: `status`, `action_type`, `agent`/`agent_name`, `requires_approval`, date range (`from`/`to`)
+- Safe `payload_summary` (operational keys only; PII/sensitive fields excluded)
+- `decided_by`, `decided_at`, agent metadata, and timestamps included
+
+*Acceptance criteria:*
+
+- List and detail access for authenticated scoped users
+- `status=pending_approval` filtering works
+- Cross-tenant/store isolation enforced
+- Unauthorized access rejected
+- Focused API tests pass
+
+*Documented in:* `docs/phases/step-4.7.md`
+
+**4.8 — Manager Approve/Reject APIs**
+
+*Implemented:*
+
+- `POST /api/actions/{id}/approve/` — delegates to `ActionService.approve()`
+- `POST /api/actions/{id}/reject/` — delegates to `ActionService.reject()`; non-empty `reason` required
+- Manager-only (or staff); tenant/store scoping before transition
+- Returns updated action representation; `ActionEvent` audit via service layer
+- Invalid transitions return `400`; unauthorized users return `403`; cross-scope returns `404`
+
+*Acceptance criteria:*
+
+- Manager can approve/reject pending actions
+- Reject without reason fails validation
+- Invalid status transitions fail
+- Audit events created through service layer
+- Focused API tests pass
+
+*Documented in:* `docs/phases/step-4.8.md`
+
+**4.9 — Phase 4 Alignment and Verification**
+
+*Scope:*
+
+- Re-check all Phase 4 deliverables against implementation
+- Resolve prior inconsistency (Step 4.5 service foundations vs missing dashboard APIs)
+- Run focused test suites for action service, internal AI writes, report completion, history, reports, actions, approve/reject
+- Record completion decision in `docs/phases/step-4.9.md`
+
+*Acceptance criteria:*
+
+- All Phase 4 subphases 4.1–4.9 complete and documented
+- All Phase 4 dashboard and internal APIs implemented and tested
+- Phase 4 can be marked complete
+
+*Documented in:* `docs/phases/step-4.9.md`
+
+**Final Phase 4 acceptance criteria:**
 
 - Agent can POST suggested action → appears as `pending_approval` or `queued`
-- Manager approve transitions to executable state
-- Reject records reason and terminal state
+- Manager approve transitions to executable state; reject records reason and terminal state
 - History shows chronological events
+- Dashboard can list/detail reports and actions with tenant/store isolation
+- Manager approve/reject endpoints work through `ActionService` with audit trail
+- Internal AI write and report completion APIs remain functional
+- Relevant Phase 4 tests pass
+- Final verification is documented in `docs/phases/step-4.9.md`
+
+**Phase 4 Completion Gate:**
+
+Phase 4 is **complete** when subphases **4.1 through 4.9** are implemented, documented, and verified. All gate requirements are recorded in `docs/phases/step-4.9.md`:
+
+1. Action state machine and `ActionEvent` audit trail implemented (4.1–4.2).
+2. Internal AI write APIs and report completion API implemented (4.3–4.4).
+3. Dashboard history feed implemented (4.5).
+4. Dashboard report and action read APIs implemented (4.6–4.7).
+5. Manager approve/reject APIs implemented (4.8).
+6. Full Phase 4 verification passes (4.9).
+
+Phase 5 (Celery & Async Wiring) may proceed once Phase 4 is closed.
 
 ---
 

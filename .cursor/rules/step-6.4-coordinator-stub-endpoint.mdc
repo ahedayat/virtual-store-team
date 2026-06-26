@@ -1,0 +1,179 @@
+---
+description: Step 6.4 rules for implementing the coordinator-agent daily report stub endpoint.
+globs:
+  - "agents/**"
+  - "docker-compose.yml"
+  - ".env.example"
+  - "docs/phases/step-6.4.md"
+alwaysApply: false
+---
+
+# Step 6.4 — Coordinator Stub Endpoint Rules
+
+This rule applies only to Phase 6.4: implementing a coordinator-agent stub endpoint that accepts a daily report job.
+
+## Scope
+
+Implement a minimal, deterministic FastAPI endpoint in `coordinator-agent` that accepts a daily report workflow request from Django/Celery.
+
+The endpoint should be compatible with the Phase 5 Celery task coordinator call.
+
+Recommended endpoint:
+
+`POST /workflows/daily-report`
+
+The endpoint must:
+
+* Accept a daily report job payload.
+* Validate the request body with Pydantic or the shared validation utilities from Step 6.3.
+* Accept or inspect service JWT headers if existing auth utilities are available.
+* Return a deterministic structured JSON response.
+* Not call real specialist agents.
+* Not call a real LLM provider.
+* Not implement LangGraph.
+* Not persist real `DailyReport`, `AgentOutput`, or `Action` records directly.
+* Not bypass Django as source of truth.
+
+## Expected request payload
+
+The endpoint should accept the semantic shape already used by Phase 5:
+
+```json
+{
+  "report_run_id": "<uuid>",
+  "tenant_id": "<uuid>",
+  "store_id": "<uuid>",
+  "context_ref": {
+    "type": "report_run",
+    "id": "<uuid>"
+  }
+}
+```
+
+Additional optional fields are acceptable if already used by the project, such as:
+
+* `request_id`
+* `requested_by`
+* `period`
+
+## Expected response payload
+
+Return a deterministic stub response such as:
+
+```json
+{
+  "status": "accepted",
+  "workflow": "daily_report",
+  "report_run_id": "<uuid>",
+  "message": "Coordinator stub accepted the daily report job.",
+  "warnings": [
+    {
+      "code": "stub_mode",
+      "message": "Real LangGraph orchestration is not implemented yet."
+    }
+  ]
+}
+```
+
+If the existing Phase 5 task expects a different response shape, preserve compatibility with that task.
+
+## Health endpoint
+
+Ensure the coordinator-agent has a working health endpoint, for example:
+
+`GET /health`
+
+or use the existing health endpoint if it already exists.
+
+Do not redesign all agent health endpoints unless required by the current coordinator service.
+
+## Auth boundary
+
+If the project already has shared service JWT validation utilities for agent services, use them.
+
+If not, do not invent a full auth framework in this step. Instead:
+
+* Require or inspect the `Authorization: Bearer ...` header if practical.
+* Document that full service JWT validation inside FastAPI agents is deferred.
+* Do not accept or log raw secrets.
+* Do not print full JWT values in logs.
+
+## Use existing shared modules
+
+Use existing shared modules where appropriate:
+
+* Step 6.1 language helper may be imported only if needed for response metadata.
+* Step 6.2 DjangoClient should not be used for real Django writes in this step unless a lightweight optional smoke call already exists.
+* Step 6.3 validation utilities may be used for request/response validation if they fit.
+
+Keep the endpoint simple and deterministic.
+
+## Out of scope
+
+Do not implement Phase 7, 8, 9, or 10.
+
+* Do not implement sales-agent logic.
+* Do not implement content-agent logic.
+* Do not implement support-agent logic.
+* Do not implement LangGraph orchestration.
+* Do not implement final daily report merging.
+* Do not create real action recommendations.
+* Do not call `/internal/ai/report-runs/{id}/complete/` from this stub unless this is already required by the Phase 5 task contract.
+* Do not call real LLM providers.
+* Do not implement production-grade agent auth if no shared utility exists yet.
+
+Do not add a complex LLM provider hierarchy in this step unless it already exists and only needs trivial integration.
+
+## Tests required
+
+Add focused tests for:
+
+* `GET /health` returns success.
+* `POST /workflows/daily-report` accepts a valid payload.
+* The endpoint returns deterministic structured JSON.
+* Invalid payload returns validation error.
+* Missing required fields fail validation.
+* Authorization header behavior is tested if implemented.
+* Response does not include raw secrets or PII.
+* The endpoint can be called with the same payload shape used by the Phase 5 Celery task.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-6.4.md`
+
+The documentation must include:
+
+* Step title and goal.
+* Scope of this step.
+* Endpoint path.
+* Request schema.
+* Response schema.
+* Health endpoint.
+* Auth/header behavior.
+* Files changed.
+* Tests added.
+* How this connects to Phase 5 Celery.
+* Validation commands.
+* What is intentionally stubbed.
+* What is intentionally not implemented.
+* Phase 6 completion note.
+* Next phases:
+
+  * Phase 7: Sales Agent
+  * Phase 8: Content Agent
+  * Phase 9: Support Agent
+  * Phase 10: Coordinator & LangGraph
+
+## Acceptance criteria
+
+* `coordinator-agent` exposes a daily report stub endpoint.
+* The endpoint accepts the Phase 5 report job payload.
+* The endpoint validates request shape.
+* The endpoint returns deterministic JSON.
+* Invalid payloads fail clearly.
+* Existing health endpoint works or is added.
+* Tests cover success and validation failure.
+* `docs/phases/step-6.4.md` exists.
+* No real LangGraph, specialist agent logic, real LLM call, or final report orchestration is implemented in this step.

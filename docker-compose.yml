@@ -100,7 +100,8 @@ services:
 
   coordinator-agent:
     build:
-      context: ./agents/coordinator
+      context: ./agents
+      dockerfile: coordinator/Dockerfile
     env_file:
       - .env
     ports:

@@ -1,0 +1,167 @@
+---
+description: Step 7.1 — Sales Agent priority rubric and prompt rules
+globs:
+  - "agents/sales/**/*.py"
+  - "agents/sales/**/*.md"
+  - "agents/shared/schemas/**/*.py"
+  - "docs/phases/step-7.1.md"
+alwaysApply: false
+---
+
+# Step 7.1 — Sales Agent Priority Rubric Rules
+
+This rule applies only to Step 7.1 of Phase 7.
+
+## Scope
+
+Implement the recommendation priority rubric inside the Sales Agent prompt layer.
+
+Do not implement the full Phase 7 pipeline in this step. Avoid completing Step 7.2, 7.3, or 7.4 unless a very small supporting change is required to keep the current scaffold working.
+
+Recommended locations:
+
+* `agents/sales/app/prompts/` or `agents/sales/prompts/`
+* `agents/sales/app/prompts/sales_analysis.py` (or equivalent)
+* `agents/sales/tests/test_prompts.py` (or equivalent)
+
+Reuse existing shared helpers where appropriate:
+
+* Step 6.1 `agents/shared/language.py` for `AI_OUTPUT_LANGUAGE` prompt prefix
+* Step 6.3 validation utilities only if a minimal placeholder schema is needed for prompt tests
+
+## Required behavior
+
+- Add or update the Sales Agent prompt template so it contains an explicit priority rubric.
+- Use priority values from 1 to 5, where:
+  - 1 = urgent / highest business impact
+  - 2 = high priority
+  - 3 = medium priority
+  - 4 = low priority / monitor
+  - 5 = informational / no immediate action
+- The rubric must cover at least:
+  - restock recommendations
+  - discount recommendations
+  - sales follow-up recommendations
+  - SKU/product prioritization
+- Allowed sales action types are:
+  - `sales.restock`
+  - `sales.discount`
+  - `sales.follow_up`
+- Every recommendation must include:
+  - `priority`
+  - `action_type`
+  - `title`
+  - `description`
+  - `rationale`
+  - `payload`
+- The prompt must instruct the LLM not to include raw PII.
+- The prompt must instruct the LLM to use only sanitized data received from Django internal APIs.
+- The Sales Agent must not directly access the database.
+- The Sales Agent must not post to Instagram, reply to customers, change prices, or execute actions directly.
+- Keep the implementation generic and tenant-scoped. Do not hardcode Prestia-specific business rules.
+
+### Priority rubric guidance (for prompt content)
+
+The prompt rubric should map business signals to priority in a deterministic, tenant-agnostic way. Example mappings the prompt may encode:
+
+| Priority | Label | Example signals |
+|----------|-------|-----------------|
+| 1 | Urgent / highest business impact | Critical stockout risk, very high velocity vs stock, revenue-at-risk SKU |
+| 2 | High priority | Low stock with strong recent sales, underperforming high-value SKU needing discount |
+| 3 | Medium priority | Moderate restock need, promotional opportunity, routine follow-up on warm leads |
+| 4 | Low priority / monitor | Slow-moving inventory to watch, minor discount tweaks, low-urgency follow-up |
+| 5 | Informational / no immediate action | Trend notes, SKU ranking insights, no action required now |
+
+Adapt wording to the configured `AI_OUTPUT_LANGUAGE`; the numeric scale and semantics must stay consistent.
+
+### Recommendation shape (prompt contract)
+
+Each recommendation in LLM output should follow this semantic shape:
+
+```json
+{
+  "priority": 1,
+  "action_type": "sales.restock",
+  "title": "Restock: Example SKU",
+  "description": "Short manager-facing summary.",
+  "rationale": "Why this priority and action were chosen (non-PII).",
+  "payload": {
+    "product_id": "uuid",
+    "sku": "SKU-001",
+    "current_stock": 2,
+    "suggested_order_qty": 20
+  }
+}
+```
+
+Do not require `requires_approval` in the prompt output unless a later step adds it; Django action policy already defaults approval for sales action types.
+
+## Out of scope
+
+Do not implement later Phase 7 subtasks in this step.
+
+* **7.2** — Empty sales / no-data graceful handling (unless a one-line prompt note is needed)
+* **7.3** — Full JSON schema validation of agent responses before return
+* **7.4** — Example output documentation at `docs/examples/sales_output.json`
+
+Also out of scope:
+
+* Real LLM provider calls (`OpenAIProvider`, `AnthropicProvider`, etc.)
+* FastAPI `/run` or workflow endpoints on `sales-agent`
+* Django API integration beyond prompt text referencing sanitized API data
+* LangGraph orchestration
+* Coordinator changes
+* Content or support agent logic
+* Direct database access
+* Posting to Instagram, replying to customers, or changing prices
+* Prestia-specific hardcoded business rules
+
+## Testing expectations
+
+Add focused unit tests for the prompt/rubric layer.
+
+Tests should verify that:
+
+- the prompt includes the 1–5 priority scale;
+- priority 1 is defined as the highest urgency;
+- allowed sales action types are present;
+- PII safety instructions are present;
+- the prompt can be generated in the configured `AI_OUTPUT_LANGUAGE`.
+
+Use Step 6.1 language helper in tests where applicable. Tests must not call real LLM providers or Django APIs.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-7.1.md`
+
+The document must explain:
+
+- what changed;
+- the exact priority rubric;
+- how it maps business signals to `priority`;
+- what was intentionally left for later steps;
+- how to test the change.
+
+The documentation should also include:
+
+* Step title and goal
+* Files changed
+* Prompt API (how to build the sales analysis prompt)
+* Integration with `AI_OUTPUT_LANGUAGE`
+* Tests added
+* Validation commands
+* Next steps: 7.2, 7.3, 7.4
+
+## Acceptance criteria
+
+* Sales Agent prompt template exists with an explicit 1–5 priority rubric.
+* Rubric covers restock, discount, follow-up, and SKU prioritization.
+* Allowed action types `sales.restock`, `sales.discount`, `sales.follow_up` are documented in the prompt.
+* Required recommendation fields (`priority`, `action_type`, `title`, `description`, `rationale`, `payload`) are specified in the prompt.
+* PII safety and sanitized-data-only instructions are present.
+* Prompt generation respects `AI_OUTPUT_LANGUAGE` via the Step 6.1 helper.
+* Focused unit tests cover the prompt/rubric layer.
+* `docs/phases/step-7.1.md` exists.
+* No real LLM calls, Django writes, database access, or full Phase 7 pipeline is implemented in this step.

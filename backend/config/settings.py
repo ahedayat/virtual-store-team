@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -119,6 +120,20 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+REPORT_RUN_STALE_TIMEOUT_SECONDS = int(
+    os.environ.get("REPORT_RUN_STALE_TIMEOUT_SECONDS", "600")
+)
+CELERY_STALE_REPORT_CLEANUP_INTERVAL_SECONDS = int(
+    os.environ.get("CELERY_STALE_REPORT_CLEANUP_INTERVAL_SECONDS", "300")
+)
+
+CELERY_BEAT_SCHEDULE = {
+    "maintenance-cleanup-stale-report-runs": {
+        "task": "maintenance.cleanup_stale_report_runs",
+        "schedule": timedelta(seconds=CELERY_STALE_REPORT_CLEANUP_INTERVAL_SECONDS),
+    },
+}
 
 COORDINATOR_AGENT_URL = os.environ.get(
     "COORDINATOR_AGENT_URL",

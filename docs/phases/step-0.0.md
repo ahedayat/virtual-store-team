@@ -1445,37 +1445,55 @@ Phase 5 (Celery & Async Wiring) may proceed once Phase 4 is closed.
 
 ### Phase 5 — Celery & Async Wiring
 
-**Goal:** Async daily report job orchestration from Django.
+**Goal:** Async daily report job orchestration from Django, action execution stub, and maintenance scheduling for stale report runs.
 
 **Deliverables:**
 
 - Celery app configured with Redis
 - `reports.generate_daily` task (skeleton calling coordinator HTTP)
-- `actions.execute` stub task
-- celery-beat with stale-run cleanup schedule
+- `actions.execute` stub task for queued actions
+- `maintenance.cleanup_stale_report_runs` task with celery-beat schedule
 - `POST /api/reports/generate/` enqueueing task
+- Duplicate concurrent report-run prevention per store
 
 **Tasks:**
 
-1. Celery config in Django
-2. Report generation task with status updates
-3. Error handling and timeouts
-4. Beat schedule for maintenance only
+1. Celery config in Django and Docker Compose worker/beat services
+2. Report generation task with status updates and coordinator HTTP client
+3. Error handling and timeouts for coordinator calls
+4. Action execution stub task wired to existing `Action` model and lifecycle
+5. Stale active report-run cleanup and beat schedule
 
 **Subtasks:**
 
-- 5.1 Configure `CELERY_BROKER_URL`, worker entrypoint in compose
-- 5.2 Task: create ReportRun → `running` → call coordinator → `completed`/`failed`
-- 5.3 Prevent duplicate concurrent runs per store
-- 5.4 Integration test with mock coordinator HTTP server
+- **5.1** Configure `CELERY_BROKER_URL`, worker/beat entrypoints in compose, Redis wiring, smoke task
+- **5.2** Task: create `ReportRun` → `running` → call coordinator → `completed`/`failed`; `POST /api/reports/generate/`
+- **5.3** Prevent duplicate concurrent runs per store (application check + DB constraint)
+- **5.4** Integration test with mock coordinator HTTP server (Celery eager mode)
+- **5.5** `actions.execute` Celery task — load queued `Action` by ID, validate executability, MVP stub execution, idempotent skip for terminal/already-executed actions, structured logs/result; tests for success, idempotency, non-executable, missing ID, task registration; documented in `docs/phases/step-5.5.md`
+- **5.6** `maintenance.cleanup_stale_report_runs` — find active (`queued`/`running`) runs older than `REPORT_RUN_STALE_TIMEOUT_SECONDS` (default 600s), mark `failed` with stale-cleanup message via `ReportRunService`; `CELERY_BEAT_SCHEDULE` interval (default 300s); tests for stale/fresh/terminal runs, beat schedule, task registration; documented in `docs/phases/step-5.6.md`
 
 **Dependencies:** Phase 4
 
 **Acceptance criteria:**
 
 - API trigger enqueues Celery task visible in worker logs
-- ReportRun status progresses through lifecycle
-- Failed coordinator call sets `failed` with error message
+- `ReportRun` status progresses through lifecycle (`queued` → `running` → `completed`/`failed`)
+- Failed coordinator call sets `failed` with safe error message
+- Duplicate active runs per store return HTTP 409 and do not enqueue Celery
+- Mock coordinator integration tests pass without real agent containers
+- `actions.execute` marks eligible `queued` actions `executed` with stub `execution_result`; already-executed and non-executable actions are skipped safely
+- `maintenance.cleanup_stale_report_runs` marks only stale active runs failed; terminal runs unchanged; beat schedule registered
+- Phase 5 documentation complete through Step 5.6
+
+**Verification commands:**
+
+```bash
+docker compose up --build
+docker compose exec backend python manage.py test operations.tests.test_execute_action_task operations.tests.test_cleanup_stale_report_runs
+docker compose exec backend python manage.py test operations.tests.test_generate_daily_task operations.tests.test_coordinator_integration operations.tests.test_report_generate_api
+docker compose exec celery-worker celery -A config inspect registered | grep -E 'actions.execute|maintenance.cleanup_stale_report_runs'
+```
 
 ---
 

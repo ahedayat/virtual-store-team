@@ -4,10 +4,11 @@ import logging
 import time
 
 from celery import shared_task
+from django.core.exceptions import ValidationError
 
 from operations.coordinator_client import CoordinatorClientError, CoordinatorDailyReportClient
-from operations.models import ReportRun
-from operations.services import ReportRunService
+from operations.models import Action, ReportRun
+from operations.services import ActionService, ReportRunService
 
 logger = logging.getLogger(__name__)
 
@@ -76,3 +77,63 @@ def generate_daily(report_run_id: str) -> dict[str, str]:
         "status": report_run.status,
         "report_run_id": str(report_run.id),
     }
+
+
+@shared_task(name="actions.execute")
+def execute_action(action_id: str) -> dict[str, str | dict[str, str]]:
+    """Execute a queued action using the MVP stub handler (no external side effects)."""
+    try:
+        action = Action.objects.select_related("tenant", "store").get(pk=action_id)
+    except (Action.DoesNotExist, ValidationError):
+        logger.error(
+            "Action not found for execute task",
+            extra={"action_id": action_id},
+        )
+        return {"status": "skipped", "reason": "action_not_found"}
+
+    log_context = {
+        "action_id": str(action.id),
+        "tenant_id": str(action.tenant_id),
+        "store_id": str(action.store_id),
+        "action_type": action.action_type,
+        "action_status": action.status,
+    }
+
+    result = ActionService.execute_stub(action=action)
+    outcome = result["outcome"]
+
+    if outcome == "executed":
+        logger.info(
+            "Action stub execution completed",
+            extra={**log_context, "execution_outcome": outcome},
+        )
+        return {
+            "status": "executed",
+            "action_id": result["action_id"],
+            "execution_result": result["execution_result"],
+        }
+
+    logger.info(
+        "Action execute task skipped",
+        extra={**log_context, "execution_outcome": outcome, "result_status": result.get("status")},
+    )
+    return {
+        "status": "skipped",
+        "reason": outcome,
+        "action_id": result["action_id"],
+        "action_status": result.get("status", action.status),
+    }
+
+
+@shared_task(name="maintenance.cleanup_stale_report_runs")
+def cleanup_stale_report_runs() -> dict[str, int | list[str]]:
+    """Mark active report runs that exceeded the stale timeout as failed."""
+    result = ReportRunService.cleanup_stale_active_runs()
+    logger.info(
+        "Stale report run cleanup completed",
+        extra={
+            "marked_failed_count": result["marked_failed_count"],
+            "stale_timeout_seconds": result["stale_timeout_seconds"],
+        },
+    )
+    return result

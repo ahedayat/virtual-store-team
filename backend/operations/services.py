@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -12,9 +14,15 @@ from accounts.models import User, UserRole
 from operations.constants import (
     ACTION_EVENT_TYPE_APPROVED,
     ACTION_EVENT_TYPE_CREATED,
+    ACTION_EVENT_TYPE_EXECUTED,
+    ACTION_EVENT_TYPE_EXECUTING,
     ACTION_EVENT_TYPE_QUEUED,
     ACTION_EVENT_TYPE_REJECTED,
     ACTION_STATUS_APPROVED,
+    ACTION_STATUS_CANCELLED,
+    ACTION_STATUS_EXECUTED,
+    ACTION_STATUS_EXECUTING,
+    ACTION_STATUS_FAILED,
     ACTION_STATUS_PENDING_APPROVAL,
     ACTION_STATUS_QUEUED,
     ACTION_STATUS_REJECTED,
@@ -458,6 +466,94 @@ class ActionService:
             return "low_risk_payload"
         return "default_action_type_policy"
 
+    @classmethod
+    def execute_stub(cls, *, action: Action) -> dict[str, Any]:
+        """MVP stub execution for queued actions with no external side effects."""
+        terminal_skip_statuses = {
+            ACTION_STATUS_FAILED,
+            ACTION_STATUS_REJECTED,
+            ACTION_STATUS_CANCELLED,
+        }
+
+        with transaction.atomic():
+            locked_action = Action.objects.select_for_update().get(pk=action.pk)
+            current_status = locked_action.status
+
+            if current_status == ACTION_STATUS_EXECUTED:
+                return {
+                    "outcome": "already_executed",
+                    "action_id": str(locked_action.id),
+                    "status": locked_action.status,
+                }
+            if current_status in terminal_skip_statuses:
+                return {
+                    "outcome": "terminal_skip",
+                    "action_id": str(locked_action.id),
+                    "status": current_status,
+                }
+            if current_status == ACTION_STATUS_EXECUTING:
+                return {
+                    "outcome": "already_executing",
+                    "action_id": str(locked_action.id),
+                    "status": current_status,
+                }
+            if current_status != ACTION_STATUS_QUEUED:
+                return {
+                    "outcome": "not_executable",
+                    "action_id": str(locked_action.id),
+                    "status": current_status,
+                }
+
+            locked_action.status = ACTION_STATUS_EXECUTING
+            locked_action.save(update_fields=["status", "updated_at"])
+            ActionEvent.objects.create(
+                action=locked_action,
+                event_type=ACTION_EVENT_TYPE_EXECUTING,
+                previous_status=ACTION_STATUS_QUEUED,
+                new_status=ACTION_STATUS_EXECUTING,
+                reason="Action execution started by Celery worker.",
+                actor_type=ActionEventActorType.SYSTEM,
+                actor_id="system",
+                metadata={"execution_mode": "stub"},
+            )
+
+            execution_result = {
+                "outcome": "stubbed",
+                "action_type": locked_action.action_type,
+                "message": (
+                    "MVP stub execution completed without external side effects."
+                ),
+            }
+            executed_at = timezone.now()
+            locked_action.status = ACTION_STATUS_EXECUTED
+            locked_action.executed_at = executed_at
+            locked_action.execution_result = execution_result
+            locked_action.save(
+                update_fields=[
+                    "status",
+                    "executed_at",
+                    "execution_result",
+                    "updated_at",
+                ]
+            )
+            ActionEvent.objects.create(
+                action=locked_action,
+                event_type=ACTION_EVENT_TYPE_EXECUTED,
+                previous_status=ACTION_STATUS_EXECUTING,
+                new_status=ACTION_STATUS_EXECUTED,
+                reason="Action stub execution completed.",
+                actor_type=ActionEventActorType.SYSTEM,
+                actor_id="system",
+                metadata={"execution_mode": "stub"},
+            )
+
+        return {
+            "outcome": "executed",
+            "action_id": str(locked_action.id),
+            "status": ACTION_STATUS_EXECUTED,
+            "execution_result": execution_result,
+        }
+
 
 class AgentOutputService:
     @classmethod
@@ -646,6 +742,43 @@ class ReportRunService:
             )
         locked_report_run.refresh_from_db()
         return locked_report_run
+
+    @classmethod
+    def cleanup_stale_active_runs(
+        cls,
+        *,
+        stale_timeout_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        timeout_seconds = (
+            stale_timeout_seconds
+            if stale_timeout_seconds is not None
+            else settings.REPORT_RUN_STALE_TIMEOUT_SECONDS
+        )
+        cutoff = timezone.now() - timedelta(seconds=timeout_seconds)
+        error_message = (
+            "Report run marked failed by stale-run cleanup after exceeding "
+            f"the configured timeout ({timeout_seconds}s)."
+        )
+
+        stale_runs = ReportRun.objects.filter(
+            status__in=REPORT_RUN_ACTIVE_STATUSES,
+            updated_at__lt=cutoff,
+        ).order_by("updated_at")
+
+        marked_failed_ids: list[str] = []
+        for report_run in stale_runs:
+            marked = cls.mark_failed(
+                report_run=report_run,
+                error_message=error_message,
+            )
+            if marked.status == REPORT_RUN_STATUS_FAILED:
+                marked_failed_ids.append(str(marked.id))
+
+        return {
+            "marked_failed_count": len(marked_failed_ids),
+            "marked_failed_ids": marked_failed_ids,
+            "stale_timeout_seconds": timeout_seconds,
+        }
 
     @classmethod
     def complete_from_ai_payload(

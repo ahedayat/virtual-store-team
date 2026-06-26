@@ -1567,34 +1567,125 @@ docker compose exec celery-worker celery -A config inspect registered | grep -E 
 
 **Goal:** Useful sales and inventory analysis with structured action recommendations.
 
+**Status:** Complete — subphases **7.1–7.9** are implemented, verified, and documented in `docs/phases/step-7.1.md` through `docs/phases/step-7.9.md`.
+
 **Deliverables:**
 
-- Sales agent LangGraph or pipeline (single-agent graph)
+- Sales Agent analysis pipeline with schema validation and `/run` endpoint
 - Prompts for sales analysis in `AI_OUTPUT_LANGUAGE`
 - Output schema: `SalesAnalysisResult` with `recommendations[]`
-- Integration with Django: POST actions of types `sales.*`
-
-**Tasks:**
-
-1. Fetch sales/inventory from Django client
-2. LLM analysis with structured output
-3. Map recommendations to Action payloads
-4. Unit tests with mock data
-
-**Subtasks:**
-
-- 7.1 Define recommendation priority rubric in prompt
-- 7.2 Handle empty sales gracefully
-- 7.3 Validate JSON against schema before return
-- 7.4 Document example output in `docs/examples/sales_output.json`
+- Django sales/inventory fetch via shared `DjangoClient`
+- Inventory-aware analysis signals
+- Mapping and persistence for `sales.restock`, `sales.discount`, `sales.follow_up`
+- Example output at `docs/examples/sales_output.json`
+- Prestia-style acceptance proof
 
 **Dependencies:** Phase 6
 
-**Acceptance criteria:**
+**Subphases:**
 
-- Given Prestia seed data, agent returns at least one restock or discount recommendation
+#### 7.1 — Sales Prompt and Schema Contract
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Define the Sales Agent priority rubric, allowed action types, and recommendation field contract in the prompt layer. |
+| **Scope** | Prompt module, package marker, focused prompt/rubric unit tests. |
+| **Main files/modules** | `agents/sales/prompts.py`, `agents/sales/tests/test_prompts.py` |
+| **Acceptance criteria** | 1–5 priority rubric; allowed `sales.restock`, `sales.discount`, `sales.follow_up`; required recommendation fields documented; PII/safety constraints; `AI_OUTPUT_LANGUAGE` integration. |
+| **Status** | Complete — documented in `docs/phases/step-7.1.md` |
+
+#### 7.2 — Empty Sales Handling
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Return a deterministic, schema-valid empty-sales result without LLM calls or hallucinated recommendations. |
+| **Scope** | Empty-sales detection helpers, `SalesAnalysisResult` schemas, analysis entry point bypass. |
+| **Main files/modules** | `agents/sales/empty_sales.py`, `agents/shared/schemas/sales.py`, `agents/sales/analysis.py`, `agents/sales/tests/test_empty_sales.py` |
+| **Acceptance criteria** | Zero/missing sales data detected safely; empty `recommendations`; localized summary; no LLM on empty path; low stock alone does not create urgent actions without sales evidence. |
+| **Status** | Complete — documented in `docs/phases/step-7.2.md` |
+
+#### 7.3 — Schema Validation and `/run`
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Validate every Sales Agent output against `SalesAnalysisResult` before return, including via `POST /run`. |
+| **Scope** | Shared validation gate, pipeline integration, FastAPI `/run`, request schema, endpoint and validation tests. |
+| **Main files/modules** | `agents/sales/validation.py`, `agents/sales/analysis.py`, `agents/sales/app/main.py`, `agents/sales/app/schemas.py`, `agents/sales/tests/test_schema_validation.py` |
+| **Acceptance criteria** | All return paths validated; malformed LLM JSON rejected; invalid action types/priorities rejected; HTTP 422 on validation failure; empty-sales path uses same gate. |
+| **Status** | Complete — documented in `docs/phases/step-7.3.md` |
+
+#### 7.4 — Sales Output Example
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Publish a canonical schema-valid Sales Agent output example for integrators and CI. |
+| **Scope** | Example JSON file and focused example-validation test. |
+| **Main files/modules** | `docs/examples/sales_output.json`, `agents/sales/tests/test_sales_output_example.py` |
+| **Acceptance criteria** | Example validates against `SalesAnalysisResult`; includes at least one `sales.restock` or `sales.discount` recommendation; no PII; no executed-action claims. |
+| **Status** | Complete — documented in `docs/phases/step-7.4.md` |
+
+#### 7.5 — Django Sales/Inventory Data Fetching
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Fetch sales summary and low-stock inventory from Django internal APIs and merge with caller context deterministically. |
+| **Scope** | Shared Django client helpers, sales context merge module, fetch fallback warnings, `/run` request fields for fetch. |
+| **Main files/modules** | `agents/shared/django_client/client.py`, `agents/sales/sales_context.py`, `agents/sales/django_fetch.py`, `agents/sales/analysis.py`, `agents/sales/tests/test_django_fetch.py` |
+| **Acceptance criteria** | Successful fetch test; empty-sales bypass preserved; Django failure fallback; caller + Django merge test. |
+| **Status** | Complete — documented in `docs/phases/step-7.5.md` |
+
+#### 7.6 — Inventory-aware Sales Analysis
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Pass inventory/low-stock/slow-moving signals into the runtime analysis payload so recommendations reflect inventory evidence. |
+| **Scope** | Inventory signal model, analysis payload builder, mock provider inventory-aware recommendations. |
+| **Main files/modules** | `agents/sales/inventory_signals.py`, `agents/sales/analysis.py`, `agents/shared/llm/mock.py`, `agents/sales/tests/test_inventory_signals.py` |
+| **Acceptance criteria** | Low stock can produce `sales.restock`; slow movers can produce `sales.discount`; signals appear in LLM/mock input; schema validation unchanged. |
+| **Status** | Complete — documented in `docs/phases/step-7.6.md` |
+
+#### 7.7 — Sales Action Mapping
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Map validated recommendations to Django-compatible action payloads for `sales.*` action types. |
+| **Scope** | Sales action mapping module and mapping validation tests. |
+| **Main files/modules** | `agents/sales/action_mapping.py`, `agents/sales/tests/test_action_mapping.py` |
+| **Acceptance criteria** | Valid restock/discount/follow-up mapping; unsupported types rejected; missing payload fields rejected deterministically. |
+| **Status** | Complete — documented in `docs/phases/step-7.7.md` |
+
+#### 7.8 — Persist `sales.*` Actions to Django
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Submit mapped sales actions through `POST /internal/ai/actions/` with dry-run support for safe local/test runs. |
+| **Scope** | Persistence helper, `/run` orchestration, non-fatal persistence failure warnings. |
+| **Main files/modules** | `agents/sales/action_mapping.py`, `agents/sales/app/main.py`, `agents/sales/app/schemas.py`, `agents/sales/tests/test_action_mapping.py` |
+| **Acceptance criteria** | Successful mocked persistence; Django failure warning; dry-run without POST; invalid mapped payload rejected before POST. |
+| **Status** | Complete — documented in `docs/phases/step-7.8.md` |
+
+#### 7.9 — Prestia Acceptance Proof and Phase Closure
+
+| Item | Detail |
+|------|--------|
+| **Objective** | Prove Phase 7 acceptance criteria with Prestia-style fixtures and close the phase. |
+| **Scope** | Acceptance tests, full Sales Agent test suite verification, closure document. |
+| **Main files/modules** | `agents/sales/tests/test_phase7_acceptance.py`, `docs/phases/step-7.9.md` |
+| **Acceptance criteria** | Prestia-style fixture yields `sales.restock` and/or `sales.discount`; recommendations include `priority`, `action_type`, `payload`; mapped actions submit to mocked Django workflow; full suite passes. |
+| **Status** | Complete — documented in `docs/phases/step-7.9.md` |
+
+**Final Phase 7 acceptance criteria:**
+
+- Given Prestia-style sales/inventory data, agent returns at least one restock or discount recommendation
 - Recommendations include `priority`, `action_type`, `payload` fields
 - No PII in agent logs or LLM prompts
+- Sales/inventory data can be fetched from Django internal APIs
+- Recommendations map to Django action payloads and can be persisted via the internal action workflow
+- Full Sales Agent test suite passes with deterministic mocks
+
+**Phase 7 Completion Gate:**
+
+Phase 7 is **complete** as of 2026-06-26. Subphases **7.1 through 7.9** are implemented and documented. Final verification is recorded in `docs/phases/step-7.9.md`.
 
 ---
 

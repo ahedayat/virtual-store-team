@@ -140,29 +140,109 @@ def _build_sales_mock_output(
     sales_data: Mapping[str, Any],
     report_run_id: str | None,
 ) -> dict[str, Any]:
-    top_products = []
-    for period_key in ("today", "last_7_days"):
-        period = sales_data.get(period_key)
-        if isinstance(period, Mapping):
-            candidates = period.get("top_products")
-            if isinstance(candidates, list) and candidates:
-                top_products = [item for item in candidates if isinstance(item, Mapping)]
-                break
-
     recommendations: list[dict[str, Any]] = []
-    if top_products:
-        first = top_products[0]
+
+    inventory = sales_data.get("inventory")
+    if isinstance(inventory, Mapping):
+        low_stock_items = inventory.get("items")
+    else:
+        low_stock_items = None
+
+    signals = sales_data.get("inventory_signals")
+    if not isinstance(signals, Mapping):
+        signals = {}
+
+    low_stock_products = signals.get("low_stock_products")
+    if not isinstance(low_stock_products, list):
+        low_stock_products = []
+        if isinstance(low_stock_items, list):
+            low_stock_products = [
+                item for item in low_stock_items if isinstance(item, Mapping)
+            ]
+
+    if low_stock_products:
+        first = low_stock_products[0]
         sku = first.get("sku") if isinstance(first.get("sku"), str) else "SKU-1"
+        product_id = first.get("product_id")
+        current_stock = first.get("available_quantity")
+        suggested_qty = first.get("suggested_reorder_quantity")
+        payload: dict[str, Any] = {"sku": sku}
+        if isinstance(product_id, str) and product_id.strip():
+            payload["product_id"] = product_id.strip()
+        if isinstance(current_stock, int):
+            payload["current_stock"] = current_stock
+        if isinstance(suggested_qty, int):
+            payload["suggested_order_qty"] = suggested_qty
+
         recommendations.append(
             {
                 "priority": 2,
                 "action_type": "sales.restock",
                 "title": f"Restock: {sku}",
-                "description": "Inventory attention recommended for a top seller.",
-                "rationale": "Mock provider recommendation based on supplied sales context.",
-                "payload": {"sku": sku},
+                "description": "Inventory attention recommended for a low-stock product.",
+                "rationale": (
+                    "Available inventory is below the configured threshold using "
+                    "sanitized inventory signals only."
+                ),
+                "payload": payload,
             }
         )
+
+    promotion_candidates = signals.get("promotion_eligible_products")
+    if not isinstance(promotion_candidates, list):
+        promotion_candidates = []
+
+    slow_moving = signals.get("slow_moving_products")
+    if isinstance(slow_moving, list) and slow_moving:
+        promotion_candidates = list(promotion_candidates) + [
+            item for item in slow_moving if isinstance(item, Mapping)
+        ]
+
+    if promotion_candidates:
+        candidate = promotion_candidates[0]
+        sku = candidate.get("sku") if isinstance(candidate.get("sku"), str) else "SKU-2"
+        product_id = candidate.get("product_id")
+        payload = {"sku": sku, "suggested_discount_pct": 10}
+        if isinstance(product_id, str) and product_id.strip():
+            payload["product_id"] = product_id.strip()
+
+        recommendations.append(
+            {
+                "priority": 3,
+                "action_type": "sales.discount",
+                "title": f"Discount review: {sku}",
+                "description": "Promotional pricing may help move slow-selling inventory.",
+                "rationale": (
+                    "Recent sales velocity is weak relative to available inventory "
+                    "using aggregate sales and inventory signals only."
+                ),
+                "payload": payload,
+            }
+        )
+
+    if not recommendations:
+        top_products = []
+        for period_key in ("today", "last_7_days"):
+            period = sales_data.get(period_key)
+            if isinstance(period, Mapping):
+                candidates = period.get("top_products")
+                if isinstance(candidates, list) and candidates:
+                    top_products = [item for item in candidates if isinstance(item, Mapping)]
+                    break
+
+        if top_products:
+            first = top_products[0]
+            sku = first.get("sku") if isinstance(first.get("sku"), str) else "SKU-1"
+            recommendations.append(
+                {
+                    "priority": 2,
+                    "action_type": "sales.restock",
+                    "title": f"Restock: {sku}",
+                    "description": "Inventory attention recommended for a top seller.",
+                    "rationale": "Mock provider recommendation based on supplied sales context.",
+                    "payload": {"sku": sku},
+                }
+            )
 
     return {
         "metadata": {

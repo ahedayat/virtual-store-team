@@ -157,6 +157,14 @@ class DjangoClient:
         """
         return self.post("/internal/ai/actions/", json=payload)
 
+    def get_sales_summary(self, store_id: str) -> dict[str, Any]:
+        """Fetch store sales summary from ``GET /internal/ai/stores/{id}/sales/summary/``."""
+        return self.get(f"/internal/ai/stores/{store_id}/sales/summary/")
+
+    def get_low_stock_inventory(self, store_id: str) -> dict[str, Any]:
+        """Fetch low-stock inventory from ``GET /internal/ai/stores/{id}/inventory/low-stock/``."""
+        return self.get(f"/internal/ai/stores/{store_id}/inventory/low-stock/")
+
     def _request(
         self,
         method: str,

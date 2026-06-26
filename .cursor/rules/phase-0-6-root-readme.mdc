@@ -1,0 +1,69 @@
+---
+description: Phase 0.6 Root README and Developer Onboarding documentation rules
+globs:
+  - "README.md"
+  - "docs/phases/step-0.6.md"
+  - ".cursor/rules/phase-0-6-root-readme.mdc"
+alwaysApply: false
+---
+
+# Phase 0.6 — Root README & Developer Onboarding Rules
+
+This rule applies only to Phase 0.6.
+
+## Scope
+
+Phase 0.6 is a documentation and developer onboarding step. Its purpose is to make the project runnable and understandable from the repository root README.
+
+Allowed files to create or update:
+
+* `README.md`
+* `docs/phases/step-0.6.md`
+* `.cursor/rules/phase-0-6-root-readme.mdc`
+
+## Required README content
+
+The root `README.md` must include:
+
+* Project overview
+* MVP architecture summary
+* Required local tools
+* `.env` setup from `.env.example`
+* Docker Compose startup instructions
+* Service list and ports
+* Health endpoint list
+* Common Docker commands
+* Basic troubleshooting
+* Clear note that the project is multi-tenant and Prestia is only the first demo tenant
+
+## Constraints
+
+Do not implement application logic.
+
+Do not modify Docker, Compose, nginx, backend, frontend, or agent code in this phase unless the user explicitly asks for it in a later step.
+
+Do not add nginx configuration in Phase 0.6.
+
+Do not add healthchecks in Phase 0.6.
+
+Do not change agent Docker build contexts in Phase 0.6.
+
+Do not add bind mounts or hot reload configuration in Phase 0.6.
+
+Do not move or rename existing project files.
+
+Do not introduce dependencies.
+
+## Documentation expectations
+
+`docs/phases/step-0.6.md` must document:
+
+* Goal of the step
+* Files created or updated
+* README sections added
+* Commands a developer should run
+* What was intentionally left for later Phase 0 steps
+* Validation checklist
+* Known limitations, if any
+
+The documentation must clearly state that Phase 0.6 does not close Phase 0 by itself. Phase 0.7 through 0.11 remain required before final Phase 0 sign-off.

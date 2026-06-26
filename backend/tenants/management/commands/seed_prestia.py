@@ -553,9 +553,14 @@ def _message_sent_at_for_store(
 
 
 class Command(BaseCommand):
-    help = "Seed the Prestia demo tenant, store, categories, and sample bag products."
+    help = (
+        "Seed the Prestia tenant and main store (Phase 1 baseline). "
+        "Also seeds later-phase catalog/demo data when catalog models are available."
+    )
 
     def handle(self, *args, **options):
+        # Phase 1 baseline: idempotent prestia tenant + main store (see Phase 1.7).
+        # Category/product/order/inventory/message seeding below is later-phase demo data.
         tenant, tenant_created = Tenant.objects.get_or_create(
             slug=PRESTIA_TENANT_SLUG,
             defaults={

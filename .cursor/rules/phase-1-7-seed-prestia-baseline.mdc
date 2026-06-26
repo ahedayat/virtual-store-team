@@ -1,0 +1,106 @@
+---
+description: Phase 1.7 guardrail for Prestia seed tenant/store baseline alignment only
+globs:
+  - "backend/**/management/commands/seed_prestia.py"
+  - "backend/**/tests/**"
+  - "backend/tenants/**"
+  - "backend/stores/**"
+  - "backend/accounts/**"
+  - "docs/phases/step-0.0.md"
+  - "docs/phases/step-1.7.md"
+alwaysApply: false
+---
+
+# Phase 1.7 — Phase 1 Seed Prestia Baseline Alignment
+
+This rule applies only when working on Phase 1.7.
+
+## Goal
+
+Clarify and verify the Phase 1 baseline responsibility of `seed_prestia`.
+
+For Phase 1, `seed_prestia` must guarantee only:
+
+* An idempotent `prestia` tenant.
+* An idempotent main store for the Prestia tenant.
+
+Catalog, product, category, order, inventory, message, and demo data seeding belong to later phases and must not be treated as Phase 1 requirements.
+
+## Allowed work
+
+You may:
+
+* Inspect `docs/phases/step-0.0.md`, especially Phase 1.7.
+* Inspect the existing `seed_prestia` management command.
+* Inspect `Tenant`, `Store`, and related models needed to verify tenant/store baseline behavior.
+* Add or adjust tests proving that the Phase 1 baseline is idempotent.
+* Make small, targeted changes to `seed_prestia` only if tenant/store baseline creation is missing, non-idempotent, or unclear.
+* Add inline comments only if they clarify the Phase 1 baseline boundary.
+* Create `docs/phases/step-1.7.md`.
+
+## Required behavior
+
+`seed_prestia` must:
+
+* Guarantee a tenant with slug `prestia`.
+* Guarantee a main store associated with that tenant.
+* Be safe to run repeatedly.
+* Avoid duplicate Prestia tenant records.
+* Avoid duplicate main Prestia store records.
+* Preserve the distinction between Phase 1 tenant/store baseline and later catalog/demo data.
+
+## Required tests
+
+At minimum, add or verify tests for:
+
+1. Running `seed_prestia` creates the `prestia` tenant if missing.
+2. Running `seed_prestia` creates the main Prestia store if missing.
+3. Running `seed_prestia` repeatedly does not create duplicate tenants.
+4. Running `seed_prestia` repeatedly does not create duplicate main stores.
+5. Phase 1 tests do not require catalog/product/category seed data.
+
+## Required verification
+
+At minimum, run:
+
+* Relevant `seed_prestia` tests.
+* Relevant `tenants` and `stores` tests.
+* Relevant `accounts` tests if the command creates or references users.
+* `python manage.py makemigrations --check --dry-run`.
+
+Use the repository's normal execution style. If Docker Compose is the standard workflow, run commands inside the backend container.
+
+## Strict boundaries
+
+Do not:
+
+* Implement Phase 1.8 tenant scoping contract finalization.
+* Implement Phase 1.9 final verification.
+* Implement Phase 2 authentication work.
+* Add or modify Store read APIs from Phase 1.6.
+* Add catalog/product/category/order/inventory/message requirements to Phase 1.
+* Treat later catalog/demo seed behavior as required for Phase 1.
+* Refactor unrelated apps.
+* Modify frontend code.
+* Modify agent code.
+* Make broad formatting-only changes.
+* Rewrite migrations unless absolutely necessary and justified.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.7.md` with:
+
+* Goal
+* Scope
+* Background / gap being closed
+* Phase 1 baseline definition
+* `seed_prestia` behavior
+* Idempotency guarantees
+* Files changed
+* Tests added or verified
+* Verification commands and results
+* Acceptance criteria checklist
+* Non-goals
+* Next step: Phase 1.8 — Tenant Scoping Contract Finalization
+
+The documentation must clearly state that Phase 1.7 aligns the Prestia tenant/store baseline only and does not implement later catalog/demo seeding requirements.

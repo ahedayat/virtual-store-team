@@ -1,0 +1,42 @@
+---
+description: Phase 8.7 — Content Agent acceptance proof and example output
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "agents/content/tests/**/*.py"
+  - "docs/phases/step-8.7.md"
+  - "docs/examples/content_output.json"
+alwaysApply: false
+---
+
+# Phase 8.7 — Content Agent Acceptance Proof Rules
+
+This rule applies only to Step 8.7 of Phase 8.
+
+## Scope
+
+Prove Phase 8 acceptance criteria with deterministic tests and a validated example output document.
+
+## Rules
+
+1. Focus on acceptance proof, validation coverage, and example output only.
+2. Do not implement major new Content Agent features unless a tiny fix is required to make existing 8.1–8.6 behavior testable.
+3. Add `docs/examples/content_output.json` and validate it against `ContentSuggestions`.
+4. Add `agents/content/tests/test_content_output_example.py` and `agents/content/tests/test_phase8_acceptance.py` (or equivalent) proving Phase 8 acceptance criteria.
+5. Add deterministic tests proving:
+   - at least one `content.instagram_draft` for a Prestia-style product fixture or seeded Prestia product
+   - `content.product_description` draft generation works
+   - generated output validates against `ContentSuggestions`
+   - configured max draft limit is respected
+   - Persian default output path works end-to-end through pipeline or `POST /run`
+   - English output works with `AI_OUTPUT_LANGUAGE=en` end-to-end through pipeline or `POST /run`
+   - content action mapping preserves approval-required behavior
+   - only `content.instagram_draft` and `content.product_description` are accepted
+6. Prefer the highest practical test layer: `POST /run` when stable, otherwise `run_content_analysis()` and Step 8.6 action mapping helpers.
+7. Use MockProvider, fixtures, or seeded test data only. Do not require real LLM API keys or external services.
+8. Do not implement real Instagram publishing, external side effects, competitor scraping, website article generation, Support Agent logic, Coordinator/LangGraph orchestration, or frontend work.
+9. Do not hardcode Prestia-specific business logic in agent code. Prestia-style data may appear only in tests, fixtures, seed/demo data, or example documentation.
+10. Do not auto-approve or auto-execute content actions.
+11. Keep all action behavior inside the Django approval workflow.
+12. Preserve Steps 8.1–8.6 behavior and existing Sales Agent, backend action, and health-check tests.
+13. Update `docs/phases/step-8.7.md` with acceptance evidence, files changed, validation commands, example output details, Persian/English validation notes, and final Phase 8 status.

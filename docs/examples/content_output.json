@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "agent_name": "content-agent",
+    "report_run_id": "00000000-0000-4000-8000-0000000000c1"
+  },
+  "summary": "Reviewable content drafts were generated for the featured bag SKU using supplied product metadata only.",
+  "drafts": [
+    {
+      "action_type": "content.instagram_draft",
+      "title": "Instagram caption: Milano Leather Tote",
+      "description": "Instagram caption draft for manager review.",
+      "draft_text": "Introducing Milano Leather Tote — Bags. A structured everyday carry piece with clean lines and versatile styling.",
+      "product_id": "00000000-0000-4000-8000-000000000001",
+      "campaign_angle": "New arrivals",
+      "rationale": "Campaign angle highlights the featured SKU using factual product context without promotional exaggeration.",
+      "priority": 3,
+      "requires_approval": true,
+      "output_language": "en"
+    },
+    {
+      "action_type": "content.product_description",
+      "title": "Product description: Milano Leather Tote",
+      "description": "Product page description draft for manager review.",
+      "draft_text": "Milano Leather Tote: quality product copy based on supplied metadata. Designed for daily use with a refined silhouette suitable for work or weekend outings.",
+      "product_id": "00000000-0000-4000-8000-000000000001",
+      "campaign_angle": "New arrivals",
+      "rationale": "Product page copy reflects available catalog fields and avoids unsupported delivery or warranty claims.",
+      "priority": 3,
+      "requires_approval": true,
+      "output_language": "en"
+    }
+  ],
+  "warnings": [],
+  "output_language": "en"
+}

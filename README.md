@@ -299,9 +299,17 @@ docker compose config
 
 ### Agent container import / startup errors
 
-**Symptom:** `coordinator-agent` or `content-agent` crash with `ModuleNotFoundError` for `agents.shared` or `agents.coordinator`.
+**Symptom:** An agent container crashes with `ModuleNotFoundError` for `agents.shared`, `agents.<agent>`, or related modules.
 
-**Fix:** Agent Docker build contexts are not fully aligned yet. **Phase 0.9** will standardize contexts so shared packages import correctly. Check `docker compose logs coordinator-agent` (or the failing agent). Per-agent images with context `./agents/sales` and `./agents/support` may behave differently from `./agents` builds.
+**Fix:** Phase 0.9 standardizes agent Docker builds: repository root build context, `PYTHONPATH=/app`, and copying `agents/shared/` plus the per-agent package into each image. Rebuild agents after pulling changes:
+
+```bash
+docker compose build coordinator-agent sales-agent content-agent support-agent
+docker compose up -d coordinator-agent sales-agent content-agent support-agent
+docker compose logs --tail=50 <failing-agent>
+```
+
+Each agent image copies only `agents/shared/` and its own package; cross-agent packages are not required at runtime unless that agent imports them.
 
 ### Stale Docker volumes or images
 
@@ -325,13 +333,12 @@ docker compose up
 
 **Symptom:** `backend`, `frontend`, or an agent shows `unhealthy` in `docker compose ps` after several minutes.
 
-**Fix:** Check logs for the service (`docker compose logs -f <service>`). Backend may still be migrating — wait for `start_period` (60s). Agents with `ModuleNotFoundError` need **Phase 0.9** build context fixes, not healthcheck changes.
+**Fix:** Check logs for the service (`docker compose logs -f <service>`). Backend may still be migrating — wait for `start_period` (60s). For agents, confirm the image was rebuilt after Phase 0.9 context changes (see agent import troubleshooting above).
 
 ### Issues planned for later Phase 0 steps
 
 | Need | Phase |
 |------|-------|
-| Agent `ModuleNotFoundError` at startup | **0.9** — Docker build context alignment |
 | Hot reload via bind mounts | **0.10** — dev override |
 | Final stack sign-off checklist | **0.11** — verification |
 
@@ -349,11 +356,11 @@ docker compose up
 | **0.6** | Complete | Root README and developer onboarding |
 | **0.7** | Complete | nginx reverse proxy on port 80 |
 | **0.8** | Complete | Application healthchecks in Compose |
-| **0.9** | Planned | Agent Docker build context alignment |
+| **0.9** | Complete | Agent Docker build context alignment (shared `agents.*` imports) |
 | **0.10** | Planned | Dev bind mounts and hot reload |
 | **0.11** | Planned | Final Phase 0 verification and sign-off |
 
-**Phase 0 is not complete** until steps **0.9–0.11** are done and documented in `docs/phases/step-0.11.md`.
+**Phase 0 is not complete** until steps **0.10–0.11** are done and documented in `docs/phases/step-0.11.md`.
 
 ---
 
@@ -369,7 +376,8 @@ docker compose up
 | [docs/phases/step-0.5.md](docs/phases/step-0.5.md) | Initial full-stack verification |
 | [docs/phases/step-0.6.md](docs/phases/step-0.6.md) | Root README and developer onboarding |
 | [docs/phases/step-0.7.md](docs/phases/step-0.7.md) | nginx reverse proxy foundation |
-| [docs/phases/step-0.8.md](docs/phases/step-0.8.md) | Application healthchecks (this step) |
+| [docs/phases/step-0.8.md](docs/phases/step-0.8.md) | Application healthchecks |
+| [docs/phases/step-0.9.md](docs/phases/step-0.9.md) | Agent Docker build context alignment |
 
 ---
 

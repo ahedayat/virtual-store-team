@@ -1,0 +1,103 @@
+---
+description: Phase 0.9 Agent Docker build context alignment rules
+globs:
+  - "docker-compose.yml"
+  - "agents/**"
+  - "README.md"
+  - "docs/phases/step-0.9.md"
+  - ".cursor/rules/phase-0-9-agent-docker-context.mdc"
+alwaysApply: false
+---
+
+# Phase 0.9 — Agent Docker Build Context Alignment Rules
+
+This rule applies only to Phase 0.9.
+
+## Scope
+
+Phase 0.9 is limited to standardizing agent Docker build contexts and preventing import errors (`ModuleNotFoundError` for `agents.*` packages) inside FastAPI agent containers.
+
+Primary import paths that must work inside containers:
+
+* `agents.shared.*`
+* `agents.coordinator.*`
+* `agents.sales.*`
+* `agents.content.*`
+* `agents.support.*`
+
+Agent services in scope:
+
+* `coordinator-agent`
+* `sales-agent`
+* `content-agent`
+* `support-agent`
+
+## Allowed changes
+
+Allowed files to create or update:
+
+* `docker-compose.yml`
+* `agents/**/Dockerfile`
+* `agents/**/__init__.py`, only if package initialization is missing and required
+* `agents/**/.dockerignore`, only if useful and safe
+* `README.md`, only if agent container startup documentation needs a small update
+* `docs/phases/step-0.9.md`
+* `.cursor/rules/phase-0-9-agent-docker-context.mdc`
+
+## Required outcome
+
+All four agent containers must build and start without Python import errors related to:
+
+* missing `agents` package
+* missing `agents.shared`
+* missing per-agent package modules
+* inconsistent Docker build contexts
+* inconsistent `PYTHONPATH`
+
+## Constraints
+
+Do not implement new agent business logic.
+
+Do not implement real LLM behavior.
+
+Do not add or modify `/run` workflow behavior unless it is strictly necessary to keep existing placeholder endpoints import-safe.
+
+**Do not add development bind mounts or hot reload configuration in this phase. That belongs to Phase 0.10.**
+
+**Do not perform final Phase 0 verification or sign-off in this phase. That belongs to Phase 0.11.**
+
+Do not redesign nginx routing.
+
+Do not add new application healthchecks except for preserving existing Phase 0.8 healthchecks if needed.
+
+Do not introduce Prestia-specific behavior.
+
+Do not remove service boundaries. Each agent must remain a separate FastAPI service/container.
+
+## Preferred implementation approach
+
+Prefer a consistent Docker strategy for all agent services:
+
+* Use the repository root as Docker build context for agent services.
+* Point each service to its own Dockerfile under `agents/<agent>/Dockerfile`.
+* Copy the required `agents/` package tree (shared + per-agent code) into the image.
+* Set `WORKDIR` to `/app` and `PYTHONPATH=/app` so imports resolve as `agents.*`.
+* Keep container `uvicorn` commands aligned with actual module paths (e.g. `agents.sales.app.main:app`).
+
+Avoid one-off fixes for only one agent if the same structure applies to all agents.
+
+## Documentation expectations
+
+`docs/phases/step-0.9.md` must document:
+
+* Goal
+* Scope
+* Files created or updated
+* Previous problem or risk
+* Final Docker build context strategy
+* Import paths verified
+* Validation commands
+* Known limitations
+* What was intentionally left for Phase 0.10 and Phase 0.11
+
+Phase 0.9 does not close Phase 0 by itself. Phase 0.10 (dev bind mounts / hot reload) and Phase 0.11 (final verification and sign-off) remain required.

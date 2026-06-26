@@ -7,12 +7,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY content/requirements.txt /tmp/requirements.txt
+COPY agents/content/requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip \
     && pip install -r /tmp/requirements.txt
 
-COPY shared/ /app/agents/shared/
-COPY content/ /app/agents/content/
+COPY agents/__init__.py /app/agents/__init__.py
+COPY agents/shared/ /app/agents/shared/
+COPY agents/content/ /app/agents/content/
 
 EXPOSE 8102
 

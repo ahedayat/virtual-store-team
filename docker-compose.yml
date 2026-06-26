@@ -136,8 +136,8 @@ services:
 
   coordinator-agent:
     build:
-      context: ./agents
-      dockerfile: coordinator/Dockerfile
+      context: .
+      dockerfile: agents/coordinator/Dockerfile
     env_file:
       - .env
     ports:
@@ -159,7 +159,8 @@ services:
 
   sales-agent:
     build:
-      context: ./agents/sales
+      context: .
+      dockerfile: agents/sales/Dockerfile
     env_file:
       - .env
     ports:
@@ -181,8 +182,8 @@ services:
 
   content-agent:
     build:
-      context: ./agents
-      dockerfile: content/Dockerfile
+      context: .
+      dockerfile: agents/content/Dockerfile
     env_file:
       - .env
     ports:
@@ -204,7 +205,8 @@ services:
 
   support-agent:
     build:
-      context: ./agents/support
+      context: .
+      dockerfile: agents/support/Dockerfile
     env_file:
       - .env
     ports:

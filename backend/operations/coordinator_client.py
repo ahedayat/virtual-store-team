@@ -78,7 +78,7 @@ class CoordinatorDailyReportClient:
                 status_code=exc.code,
                 error_class=exc.__class__.__name__,
             ) from exc
-        except URLError as exc:
+        except (URLError, TimeoutError) as exc:
             reason = getattr(exc, "reason", exc)
             raise CoordinatorClientError(
                 f"Coordinator request failed: {reason}.",

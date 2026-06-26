@@ -12,6 +12,7 @@ from accounts.service_jwt import mint_service_jwt
 from operations.constants import (
     ACTION_STATUS_PENDING_APPROVAL,
     ACTION_TYPE_SALES_RESTOCK,
+    REPORT_RUN_ACTIVE_STATUSES,
     REPORT_RUN_STATUS_COMPLETED,
     REPORT_RUN_STATUS_FAILED,
     REPORT_RUN_STATUS_RUNNING,
@@ -143,6 +144,11 @@ class InternalReportRunCompleteAPITests(APITestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
     def _create_running_report_run_with_refs(self):
+        ReportRun.objects.filter(
+            tenant=self.tenant,
+            store=self.store,
+            status__in=REPORT_RUN_ACTIVE_STATUSES,
+        ).update(status=REPORT_RUN_STATUS_COMPLETED)
         report_run = ReportRun.objects.create(
             tenant=self.tenant,
             store=self.store,

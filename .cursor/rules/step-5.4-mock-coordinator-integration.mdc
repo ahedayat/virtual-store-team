@@ -1,0 +1,128 @@
+---
+description: Step 5.4 rules for integration testing the report generation flow with a mock coordinator HTTP server.
+globs:
+  - "backend/**"
+  - "docs/phases/step-5.4.md"
+  - ".env.example"
+alwaysApply: false
+---
+
+# Step 5.4 — Mock Coordinator Integration Test Rules
+
+This rule applies only to Phase 5.4: integration testing the Celery daily report flow with a mock coordinator HTTP server.
+
+## Scope
+
+Implement tests that prove the Phase 5 async report generation flow works end-to-end inside the Django/Celery boundary.
+
+The test flow should cover:
+
+1. Manager/API trigger creates a queued `ReportRun`.
+2. Celery task runs.
+3. Task transitions the run to `running`.
+4. Task calls a mock coordinator HTTP endpoint.
+5. Successful mock coordinator response leads to `completed`.
+6. Failed mock coordinator response leads to `failed` with an error message.
+7. Duplicate active run protection from Step 5.3 still prevents a second active run.
+
+## Required behavior
+
+* Use a mock coordinator HTTP server or equivalent test HTTP server fixture.
+* Do not patch away the entire coordinator HTTP boundary unless no HTTP-server-style test tooling exists.
+* The test must verify that the coordinator endpoint receives the expected request payload.
+* The request payload must include:
+
+  * `report_run_id`
+  * `tenant_id`
+  * `store_id`
+  * `context_ref`
+* If service JWT minting already exists, verify that the task sends an `Authorization: Bearer ...` header.
+* If service JWT minting is not implemented or not wired yet, document that authentication verification is deferred.
+* Use Celery eager mode or the project's existing Celery test strategy to make tests deterministic.
+* Tests must not require a real coordinator-agent container.
+* Tests must not require a real LLM provider.
+* Tests must not log or assert raw PII.
+
+## Out of scope
+
+Do not implement Phase 6.
+
+* Do not create real FastAPI agent services.
+* Do not implement LangGraph.
+* Do not implement LLM provider abstraction.
+* Do not implement sales/content/support agent logic.
+* Do not build the final coordinator-agent service.
+
+Do not implement real report content generation.
+
+* The mock coordinator may return minimal success/failure JSON only.
+* Do not create real `DailyReport` content beyond what existing Phase 5 task behavior already supports.
+
+Do not change duplicate prevention logic except to fix test failures caused by clear bugs.
+
+## Recommended tests
+
+Add focused integration tests for:
+
+* Successful coordinator call:
+
+  * API trigger creates queued run.
+  * Celery task calls mock coordinator.
+  * ReportRun ends as `completed`.
+
+* Coordinator non-2xx failure:
+
+  * Mock coordinator returns 500.
+  * ReportRun ends as `failed`.
+  * `error_message` is stored.
+
+* Coordinator timeout or connection error:
+
+  * ReportRun ends as `failed`.
+  * Error message is safe and useful.
+
+* Duplicate active run path:
+
+  * Existing `queued` or `running` run blocks a new request.
+  * No Celery task is enqueued for duplicate request.
+
+## Test strategy
+
+Prefer one of these approaches, depending on existing project tooling:
+
+* `pytest-httpserver`
+* `responses`
+* `requests-mock`
+* Django live test server with a tiny test-only view
+* A lightweight local HTTP server fixture
+
+If adding a new test dependency, add it only to development/test requirements, not production runtime requirements.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-5.4.md`
+
+The documentation must include:
+
+* Step title and goal
+* Test strategy
+* Mock coordinator contract
+* Files changed
+* How Celery eager mode is used in tests
+* Success-path test behavior
+* Failure-path test behavior
+* Duplicate-run regression coverage
+* Validation commands
+* What remains for Phase 6
+
+## Acceptance criteria
+
+* Tests prove that the Celery task calls the coordinator through an HTTP boundary.
+* Success response marks `ReportRun` as `completed`.
+* Failure response marks `ReportRun` as `failed`.
+* Duplicate active runs are still blocked.
+* Tests do not require real AI services.
+* Tests do not require a real LLM.
+* `docs/phases/step-5.4.md` exists.

@@ -1095,39 +1095,123 @@ Phase 2 (Auth & Users) may proceed.
 
 ---
 
-### Phase 2 — Auth & Users
+### Phase 2 — Manager Authentication & Internal Service JWT
 
-**Goal:** Manager authentication and JWT infrastructure for AI services.
+**Goal:** Manager session authentication for the dashboard and service JWT infrastructure so FastAPI AI agents can call Django internal APIs with scoped Bearer tokens.
 
-**Deliverables:**
+**Status:** Complete — subphases **2.1–2.4** are implemented, verified, and documented in `docs/phases/step-2.1.md` through `docs/phases/step-2.4.md`.
 
-- Login/logout API endpoints
-- Session or JWT auth for frontend
-- `ServiceJWT` minting utility
-- JWT validation middleware for `/internal/ai/*` routes
-- Service registry constants (`coordinator-agent`, etc.)
+**Deliverables (full Phase 2 scope):**
 
-**Tasks:**
-
-1. Implement manager login
-2. Build service JWT with claims
-3. Protect internal API namespace
-4. Document token lifecycle
-
-**Subtasks:**
-
-- 2.1 `POST /api/auth/login/`, `POST /api/auth/logout/`, `GET /api/auth/me/`
-- 2.2 `InternalAIAuthentication` class validating Bearer JWT
-- 2.3 Reject expired/wrong-audience tokens with 401
-- 2.4 Unit tests for token mint and verify
+- Manager auth endpoints: `POST /api/auth/login/`, `POST /api/auth/logout/`, `GET /api/auth/me/`
+- Django session-based authentication for manager/dashboard access
+- Service JWT minting and decoding utilities (`mint_service_jwt`, `decode_service_jwt`)
+- Configurable service JWT settings and `.env.example` placeholders
+- Allowed AI service registry constants
+- `InternalAIAuthentication` for `/internal/ai/*` routes (Bearer token only)
+- Protected internal auth-check endpoint (`GET /internal/ai/auth-check/`)
+- Safe `401` rejection for invalid, malformed, expired, or wrong-audience service tokens
+- Unit and integration tests for manager auth, internal AI auth, JWT lifecycle, and token rejection
+- Final verification documented in `docs/phases/step-2.4.md` (created during subphase 2.4 implementation, not in this planning step)
 
 **Dependencies:** Phase 1
 
-**Acceptance criteria:**
+**Subphases:**
 
-- Manager can authenticate via API
-- Valid service JWT accesses a test internal endpoint; invalid token is rejected
-- Human user token cannot access internal AI routes
+#### Completed (2.1–2.4)
+
+| Subphase | Name | Summary |
+|----------|------|---------|
+| **2.1** | Manager Session Authentication | `POST /api/auth/login/`, `POST /api/auth/logout/`, `GET /api/auth/me/`; Django session auth for managers; login/logout/me tests. Documented in `docs/phases/step-2.1.md`. |
+| **2.2** | Service JWT Infrastructure | Service JWT mint/decode utilities; required claims (`sub`, `tenant_id`, `store_id`, `iat`, `exp`, `aud`); configurable JWT settings; `.env.example` placeholders; allowed AI service registry. Documented in `docs/phases/step-2.2.md`. |
+| **2.3** | Internal AI Authentication | `InternalAIAuthentication`; Bearer-only auth for `/internal/ai/*`; protected auth-check endpoint; safe `401` for invalid/malformed/expired/wrong-audience tokens; session users blocked from internal AI routes. Documented in `docs/phases/step-2.3.md`. |
+| **2.4** | Phase 2 Verification & Token Lifecycle Tests | Unit tests for service JWT mint/decode lifecycle; integration tests for protected internal AI endpoints; coverage for valid, invalid, expired, wrong-audience, and missing-credential cases; Phase 2 accounts/auth test modules pass. Documented in `docs/phases/step-2.4.md`. |
+
+#### Subphase reference (2.1–2.4 detail)
+
+**2.1 — Manager Session Authentication**
+
+Implemented human dashboard authentication endpoints and Django session-based manager auth.
+
+*Implemented:*
+
+- `POST /api/auth/login/` — email/password login for manager users
+- `POST /api/auth/logout/` — end the current Django session
+- `GET /api/auth/me/` — return authenticated manager profile with tenant/store context
+- Django session-based authentication for manager/dashboard access
+- Relevant tests for login, logout, and current-user session behavior (`accounts.tests.test_auth`)
+
+*Documented in:* `docs/phases/step-2.1.md`
+
+**2.2 — Service JWT Infrastructure**
+
+Implemented service JWT minting/decoding utilities and configuration for internal AI service authentication.
+
+*Implemented:*
+
+- Service JWT minting and decoding utilities (`mint_service_jwt`, `decode_service_jwt`)
+- Required JWT claims: `sub`, `tenant_id`, `store_id`, `iat`, `exp`, and `aud`
+- Configurable service JWT settings (`JWT_SERVICE_SECRET`, `JWT_SERVICE_AUDIENCE`, `JWT_SERVICE_ALGORITHM`, `JWT_SERVICE_TOKEN_LIFETIME_MINUTES`)
+- `.env.example` placeholders for JWT service configuration
+- Allowed AI service registry constants:
+  - `coordinator-agent`
+  - `sales-agent`
+  - `content-agent`
+  - `support-agent`
+
+*Documented in:* `docs/phases/step-2.2.md`
+
+**2.3 — Internal AI Authentication**
+
+Implemented DRF authentication for internal AI routes and hardened rejection of invalid service tokens.
+
+*Implemented:*
+
+- `InternalAIAuthentication` DRF authentication class
+- Bearer-token-only authentication for `/internal/ai/*` routes
+- Protected internal auth-check endpoint (`GET /internal/ai/auth-check/`)
+- Rejection of invalid, malformed, expired, or wrong-audience tokens with safe `401` responses
+- Prevention of human/session-authenticated users from accessing internal AI routes
+
+*Documented in:* `docs/phases/step-2.3.md`
+
+**2.4 — Phase 2 Verification & Token Lifecycle Tests**
+
+Completed Phase 2 verification with comprehensive JWT lifecycle and internal AI endpoint tests.
+
+*Implemented:*
+
+- Unit tests for service JWT mint/decode lifecycle (`accounts.tests.test_service_jwt`)
+- Integration tests for protected internal AI endpoints
+- Tests for valid tokens, invalid tokens, expired tokens, wrong-audience tokens, and missing credentials
+- Confirmation that Phase 2 account/auth test modules pass (`test_auth`, `test_internal_ai_auth`, `test_internal_ai_auth_401`, `test_service_jwt`)
+
+*Documented in:* `docs/phases/step-2.4.md`
+
+**Final Phase 2 acceptance criteria:**
+
+- Manager can authenticate via `POST /api/auth/login/` and retrieve profile via `GET /api/auth/me/`
+- Valid service JWT accesses `GET /internal/ai/auth-check/`; invalid token is rejected with `401`
+- Human session-authenticated user cannot access internal AI routes without a valid service JWT
+- Service JWT carries required claims and allowed service names from the registry
+- Phase 2 accounts/auth test modules pass
+- Final verification is documented in `docs/phases/step-2.4.md`
+
+**Phase 2 Completion Gate:**
+
+Phase 2 is **complete** as of 2026-06-26. Subphases **2.1 through 2.4** are implemented and documented. All gate requirements are satisfied and recorded in `docs/phases/step-2.4.md`:
+
+1. Subphases 2.1–2.4 are implemented and documented.
+2. Manager session auth endpoints work with tenant/store context.
+3. Service JWT mint/decode utilities enforce required claims and allowed service names.
+4. `InternalAIAuthentication` protects `/internal/ai/*` with Bearer-only access.
+5. Invalid, expired, and wrong-audience tokens return safe `401` responses.
+6. Human/session auth does not grant access to internal AI routes.
+7. JWT lifecycle and internal AI integration tests pass.
+
+Phase 3 (Store Data, PII & Internal Read APIs) may proceed.
+
+**Note:** Phase 2 is complete. No Phase 2.5+ implementation tasks are currently required. Non-blocking follow-ups such as frontend cookie/CORS wiring, Celery-driven production token issuance, and tenant/store route-parameter matching belong to later phases.
 
 ---
 

@@ -1,0 +1,37 @@
+---
+description: Phase 8.6 — Content action mapping and approval persistence
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "backend/operations/**/*.py"
+  - "backend/**/tests/**/*.py"
+  - "agents/content/tests/**/*.py"
+  - "docs/phases/step-8.6.md"
+alwaysApply: false
+---
+
+# Phase 8.6 — Content Action Mapping and Approval Persistence Rules
+
+This rule applies only to Step 8.6 of Phase 8.
+
+## Scope
+
+Map validated Content Agent drafts to Django-compatible approval-required action payloads and persist them through the existing Django action workflow where project conventions support it.
+
+## Rules
+
+1. Only support these content action types:
+   - `content.instagram_draft`
+   - `content.product_description`
+2. Do not support publish/send action types such as `content.publish_instagram`.
+3. All mapped content actions must be reviewable and approval-required.
+4. Do not auto-approve, auto-execute, publish, send, or call external services.
+5. Keep all side effects inside the Django action workflow: suggest → review → approve.
+6. Use the existing Django internal actions endpoint or existing `ActionService` creation pattern. Do not create a parallel action persistence system.
+7. Preserve tenant/store/report scoping when persisting or preparing action payloads.
+8. Use validated `ContentDraft` / `ContentSuggestions` objects from Step 8.3 and pipeline output from Step 8.4/8.5.
+9. Do not implement Phase 8.7 acceptance proof or `docs/examples/content_output.json` in this step.
+10. Do not implement Coordinator/LangGraph orchestration, Support Agent logic, frontend work, real Instagram integration, competitor scraping, or website article generation.
+11. Do not hardcode Prestia-specific business logic.
+12. Add deterministic tests with fixtures or mocked Django client calls only.
+13. Update `docs/phases/step-8.6.md` with mapping behavior, persistence behavior, tests, and deferred work.

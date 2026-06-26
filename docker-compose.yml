@@ -121,7 +121,8 @@ services:
 
   content-agent:
     build:
-      context: ./agents/content
+      context: ./agents
+      dockerfile: content/Dockerfile
     env_file:
       - .env
     ports:

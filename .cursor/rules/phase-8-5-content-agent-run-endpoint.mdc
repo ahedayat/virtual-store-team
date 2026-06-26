@@ -1,0 +1,33 @@
+---
+description: Phase 8.5 — Content Agent FastAPI run endpoint
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "agents/content/tests/**/*.py"
+  - "docs/phases/step-8.5.md"
+alwaysApply: false
+---
+
+# Phase 8.5 — Content Agent `/run` Endpoint Rules
+
+This rule applies only to Step 8.5 of Phase 8.
+
+## Scope
+
+Expose the existing Content Agent runtime pipeline through a FastAPI `POST /run` endpoint.
+
+## Rules
+
+1. Add a runnable `POST /run` endpoint for `content-agent`.
+2. The endpoint must call the Step 8.4 runtime pipeline, such as `run_content_analysis()` or its project-equivalent entry point.
+3. Preserve the existing `/health` endpoint.
+4. Use request and response schemas that are compatible with the existing Content Agent pipeline and `ContentSuggestions`.
+5. The response must be schema-validated before being returned.
+6. Align the endpoint pattern with the Sales Agent `/run` endpoint where practical.
+7. Add deterministic endpoint tests using MockProvider or fixtures only.
+8. Do not require real LLM API keys.
+9. Do not implement action mapping or Django action persistence; that belongs to Step 8.6.
+10. Do not create `docs/examples/content_output.json`; that belongs to Step 8.7.
+11. Do not implement Coordinator/LangGraph orchestration, Support Agent logic, frontend work, real Instagram publishing, competitor scraping, website article generation, or external side effects.
+12. Keep the Content Agent generic and multi-tenant. Do not hardcode Prestia-specific business logic.
+13. Update `docs/phases/step-8.5.md` with endpoint contract, request/response examples, tests, and deferred work.

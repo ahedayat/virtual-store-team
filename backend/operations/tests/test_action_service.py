@@ -1,4 +1,4 @@
-from accounts.constants import AI_SERVICE_SALES, AI_SERVICE_SUPPORT
+from accounts.constants import AI_SERVICE_CONTENT, AI_SERVICE_SALES, AI_SERVICE_SUPPORT
 from accounts.models import User, UserRole
 from accounts.service_identity import AIServiceIdentity
 from django.test import TestCase
@@ -276,6 +276,62 @@ class ActionServiceCreateTests(TestCase):
         )
 
         self.assertEqual(action.report_run_id, self.report_run.id)
+
+    def test_content_instagram_draft_payload_becomes_pending_approval(self):
+        action = ActionService.create_from_agent_payload(
+            tenant=self.tenant,
+            store=self.store,
+            agent_name=AI_SERVICE_CONTENT,
+            payload={
+                "action_type": ACTION_TYPE_CONTENT_INSTAGRAM_DRAFT,
+                "title": "Instagram caption: Demo Tote",
+                "description": "Caption draft for manager review.",
+                "priority": 3,
+                "requires_approval": True,
+                "payload": {
+                    "draft_text": "Everyday leather tote — clean and versatile.",
+                    "product_id": "00000000-0000-4000-8000-000000000001",
+                    "rationale": "Seasonal campaign angle fits the featured product.",
+                },
+            },
+            report_run=self.report_run,
+        )
+
+        self.assertEqual(action.status, ACTION_STATUS_PENDING_APPROVAL)
+        self.assertTrue(action.requires_approval)
+        self.assertEqual(action.action_type, ACTION_TYPE_CONTENT_INSTAGRAM_DRAFT)
+        self.assertEqual(
+            action.payload["draft_text"],
+            "Everyday leather tote — clean and versatile.",
+        )
+        self.assertEqual(action.report_run_id, self.report_run.id)
+
+    def test_content_product_description_payload_becomes_pending_approval(self):
+        action = ActionService.create_from_agent_payload(
+            tenant=self.tenant,
+            store=self.store,
+            agent_name=AI_SERVICE_CONTENT,
+            payload={
+                "action_type": ACTION_TYPE_CONTENT_PRODUCT_DESCRIPTION,
+                "title": "Product description: Demo Tote",
+                "description": "Product page copy draft for manager review.",
+                "priority": 4,
+                "requires_approval": True,
+                "payload": {
+                    "draft_text": "A durable everyday tote with a modern silhouette.",
+                    "product_id": "00000000-0000-4000-8000-000000000002",
+                    "rationale": "Product metadata supports factual feature-led copy.",
+                },
+            },
+        )
+
+        self.assertEqual(action.status, ACTION_STATUS_PENDING_APPROVAL)
+        self.assertTrue(action.requires_approval)
+        self.assertEqual(action.action_type, ACTION_TYPE_CONTENT_PRODUCT_DESCRIPTION)
+        self.assertEqual(
+            action.payload["product_id"],
+            "00000000-0000-4000-8000-000000000002",
+        )
 
 
 class ActionServiceTransitionTests(TestCase):

@@ -149,6 +149,14 @@ class DjangoClient:
         """
         return self._request("POST", path, params=None, json_body=json, retry=retry)
 
+    def create_action(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a suggested action via ``POST /internal/ai/actions/``.
+
+        Tenant and store scope come from the service JWT on the client, not from
+        ``payload``. The caller must not expect execution or auto-approval.
+        """
+        return self.post("/internal/ai/actions/", json=payload)
+
     def _request(
         self,
         method: str,

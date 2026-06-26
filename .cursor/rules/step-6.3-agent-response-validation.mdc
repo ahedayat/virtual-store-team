@@ -1,0 +1,148 @@
+---
+description: Step 6.3 rules for implementing shared JSON schema validation for agent responses.
+globs:
+  - "agents/**"
+  - "docs/phases/step-6.3.md"
+alwaysApply: false
+---
+
+# Step 6.3 — Agent Response JSON Schema Validation Rules
+
+This rule applies only to Phase 6.3: shared JSON schema validation for AI agent responses.
+
+## Scope
+
+Implement a reusable validation layer under `agents/shared/` that future agents can use to validate structured JSON outputs.
+
+The implementation should include:
+
+* A shared schemas package or module under `agents/shared/`.
+* A reusable validation utility for agent responses.
+* Clear validation errors.
+* JSON-schema export support if practical.
+* Focused tests for valid and invalid agent responses.
+* Documentation at `docs/phases/step-6.3.md`.
+
+Recommended locations:
+
+* `agents/shared/schemas/`
+* `agents/shared/schemas/base.py`
+* `agents/shared/schemas/validation.py`
+* `agents/shared/schemas/errors.py`
+
+Adapt paths to the existing project layout.
+
+## Required behavior
+
+The shared validation layer must:
+
+* Validate Python dictionaries parsed from JSON.
+* Return typed validated objects where possible.
+* Raise clear structured validation errors for invalid payloads.
+* Avoid silently accepting missing required fields.
+* Avoid silently accepting invalid enum/status values.
+* Support future agent-specific schemas without coupling to one agent.
+* Keep validation deterministic and unit-testable.
+* Not call any LLM provider.
+* Not call Django APIs.
+* Not make network calls.
+* Not import FastAPI app modules.
+* Not import LangGraph.
+
+## Extra-field policy
+
+Agent response schemas must use **strict** validation: **forbid extra fields** (`extra="forbid"` in Pydantic).
+
+* Document this policy in `docs/phases/step-6.3.md`.
+* Add tests that prove unknown top-level and nested fields are rejected.
+
+## Recommended implementation
+
+Prefer Pydantic if it is already used or acceptable in the agent stack.
+
+Suggested API:
+
+```python
+def validate_agent_response(payload: dict, schema_model: type[T]) -> T:
+    ...
+```
+
+Optionally add:
+
+```python
+def export_json_schema(schema_model: type[BaseModel]) -> dict:
+    ...
+```
+
+Create minimal shared base schemas only if useful, for example:
+
+* `AgentResponseMetadata`
+* `AgentWarning`
+* `ScopeViolation`
+* `BaseAgentResponse`
+
+Do not create final sales/content/support business schemas yet unless they are generic placeholders only.
+
+## Out of scope
+
+Do not implement Step 6.4.
+
+* Do not implement coordinator stub endpoint.
+* Do not implement FastAPI `/run` or workflow endpoints.
+
+Do not implement LLM provider abstraction.
+
+* Do not implement `LLMProvider`.
+* Do not implement `OpenAIProvider`.
+* Do not implement `AnthropicProvider`.
+* Do not implement `MockProvider`.
+
+Do not implement business-specific agent logic.
+
+* Do not implement sales analysis.
+* Do not implement content generation.
+* Do not implement support reply drafting.
+* Do not implement LangGraph.
+
+Do not call real external services or real LLM APIs.
+
+## Tests required
+
+Add focused tests for:
+
+* Valid payload passes validation.
+* Missing required field fails validation.
+* Wrong field type fails validation.
+* Invalid enum/literal value fails validation.
+* Extra field behavior is explicit and tested.
+* Validation errors expose a safe, useful message.
+* JSON schema export works if implemented.
+* Future agent-specific schemas can use the shared validator with a dummy test schema.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-6.3.md`
+
+The documentation must include:
+
+* Step title and goal.
+* Why schema validation exists.
+* File/module layout.
+* Validation API.
+* Base schemas, if added.
+* Error behavior.
+* Example usage by future agents.
+* Tests added.
+* Validation commands.
+* What is intentionally deferred to later steps.
+
+## Acceptance criteria
+
+* Shared agent response validation exists under `agents/shared/`.
+* Tests cover valid and invalid payloads.
+* Validation errors are explicit and safe.
+* The implementation is generic and not tied to Prestia.
+* No LLM provider, coordinator endpoint, LangGraph, or real agent business logic is implemented in this step.
+* `docs/phases/step-6.3.md` exists.

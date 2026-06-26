@@ -1,0 +1,131 @@
+---
+description: Phase 4.5 rules for implementing the unified dashboard history feed
+globs:
+  - "backend/**/*.py"
+  - "docs/phases/step-4.5.md"
+alwaysApply: false
+---
+
+# Step 4.5 — Unified History Feed Rules
+
+This rule applies only to Phase 4.5 of the Agentic AI Virtual Store Management Team project.
+
+## Scope
+
+Implement only:
+
+- `GET /api/history/`
+
+This endpoint should expose a tenant-scoped, manager-facing unified timeline/feed.
+
+Do not implement later phases or unrelated APIs:
+
+- Do not implement Celery report generation tasks
+- Do not implement Celery action execution tasks
+- Do not implement coordinator or agent service code
+- Do not implement frontend UI
+- Do not implement real external side effects
+- Do not implement new action creation logic
+- Do not implement new report completion logic
+- Do not implement manager approve/reject endpoints unless they already exist and require only tiny compatibility updates
+- Do not implement broad dashboard report/action/agent-output CRUD unless strictly needed by this endpoint
+
+## Architecture Rules
+
+- Django and Postgres remain the source of truth.
+- The history endpoint is dashboard-facing, not an internal AI endpoint.
+- It must use human/dashboard authentication, not service JWT authentication.
+- AI services must not use this endpoint.
+- All returned records must be tenant-scoped and store-scoped where applicable.
+- Do not expose cross-tenant data.
+- Do not expose raw PII.
+- Do not hardcode Prestia-specific logic.
+
+## Feed Rules
+
+The history feed should aggregate read-only timeline items from existing records such as:
+
+- `ReportRun`
+- `DailyReport`
+- `AgentOutput`
+- `Action`
+- `ActionEvent`
+
+Each feed item should include a normalized shape:
+
+- `id`
+- `type`
+- `title`
+- `summary`
+- `timestamp`
+- `status`
+- `actor` or `source`, when available
+- `agent_name`, when available
+- `report_run_id`, when available
+- `action_id`, when available
+- safe metadata
+
+The endpoint must sort items in reverse chronological order by default.
+
+## Filtering and Pagination
+
+Implement simple MVP-friendly filtering when practical:
+
+- `type`
+- `status`
+- `agent_name`
+- `report_run_id`
+- `action_id`
+- `from`
+- `to`
+
+Use existing DRF pagination conventions if already configured. Otherwise implement a simple safe pagination strategy.
+
+## Security and PII Rules
+
+- Require authenticated dashboard user.
+- Use the user's tenant context.
+- Reject unauthenticated requests.
+- Return only records belonging to the user's tenant.
+- Restrict by store if store scoping exists for the authenticated user.
+- Do not return raw action payloads if they may contain sensitive details.
+- Do not return raw agent output payloads.
+- Return summaries and safe metadata only.
+- Do not log full feed item payloads.
+
+## Testing Rules
+
+Add tests for:
+
+- authenticated manager can read history feed
+- unauthenticated request is rejected
+- service JWT cannot access dashboard history endpoint
+- feed is tenant-scoped
+- cross-tenant records are excluded
+- records from ReportRun, DailyReport, AgentOutput, Action, and ActionEvent appear when present
+- feed is reverse chronological
+- filters work where implemented
+- pagination works where implemented
+- raw PII or raw payload bodies are not exposed
+- endpoint is read-only and does not mutate records
+
+## Documentation Rules
+
+Create or update:
+
+- `docs/phases/step-4.5.md`
+
+The documentation must explain:
+
+- implemented endpoint
+- authentication requirements
+- unified feed item shape
+- included source models
+- filtering and pagination
+- tenant/store scoping
+- PII-safe response design
+- tests added
+- validation commands
+- what was intentionally not implemented
+- Phase 4 completion notes
+- notes for Phase 5

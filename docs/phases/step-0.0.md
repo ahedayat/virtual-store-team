@@ -760,39 +760,152 @@ Factory: `get_llm_provider()` reads `LLM_PROVIDER` and provider-specific env var
 
 ### Phase 0 — Foundation & Docker
 
-**Goal:** Runnable compose stack with placeholder services and clear project layout.
+**Goal:** Runnable compose stack with placeholder services, nginx as the single entrypoint, developer onboarding docs, application healthchecks, correct agent Docker build contexts, dev bind mounts with hot reload, and a documented final verification sign-off.
 
-**Deliverables:**
+**Status:** Partially complete — subphases **0.1–0.5** are done; subphases **0.6–0.11** remain before Phase 0 can close.
 
-- `docker-compose.yml` with all 11 services
-- Dockerfiles for backend, frontend, each agent (minimal hello-world)
-- nginx routing: `/api` → backend, `/` → frontend
-- `.env.example`
-- README with `docker compose up` instructions
+**Deliverables (full Phase 0 scope):**
+
+- `docker-compose.yml` with all planned services (postgres, redis, backend, celery-worker, celery-beat, frontend, nginx, four agent services)
+- Dockerfiles for backend, frontend, and each agent (minimal hello-world / health-only placeholders)
+- `.env.example` and documented `.env` setup
+- Root `README.md` with onboarding and troubleshooting
+- `nginx/` config directory and nginx service routing `/api/` → backend, `/` → frontend on port 80
+- Application healthchecks for backend, frontend, agents, and Celery services where applicable
+- Standardized agent Docker build contexts supporting shared package imports
+- Development bind mounts and hot reload via `docker-compose.override.yml` (or equivalent) without clobbering dependency directories
+- Final verification documented in `docs/phases/step-0.11.md` (created during subphase 0.11 implementation, not in this planning step)
 
 **Tasks:**
 
 1. Initialize monorepo directory structure
 2. Configure postgres, redis, networks, volumes
 3. Stub backend (Django project shell), frontend (Next.js shell), agents (FastAPI `/health`)
-4. nginx reverse proxy config
-5. Healthchecks and service dependencies
+4. Wire compose services, env files, and initial full-stack verification
+5. Add root README and developer onboarding
+6. Add nginx reverse proxy as the Phase 0 entrypoint
+7. Add application healthchecks and appropriate `depends_on` conditions
+8. Align agent Docker build contexts for shared imports
+9. Add dev bind mounts and hot reload safely
+10. Run final Phase 0 verification and sign-off
 
-**Subtasks:**
+**Subphases:**
 
-- 0.1 Create `backend/Dockerfile` + entrypoint (migrate + runserver/gunicorn)
-- 0.2 Create `frontend/Dockerfile`
-- 0.3 Create agent Dockerfiles (shared base image optional)
-- 0.4 Wire compose env_file
-- 0.5 Verify all containers healthy with `docker compose ps`
+#### Completed (0.1–0.5)
+
+| Subphase | Name | Summary |
+|----------|------|---------|
+| **0.1** | Backend Docker foundation | `backend/Dockerfile` + entrypoint (migrate + runserver/gunicorn) |
+| **0.2** | Frontend Docker foundation | `frontend/Dockerfile` |
+| **0.3** | Agent placeholder services | Agent Dockerfiles (shared base image optional); FastAPI `/health` stubs |
+| **0.4** | Docker Compose wiring | `docker-compose.yml` services, networks, volumes, `env_file` |
+| **0.5** | Initial full-stack Docker verification | Containers build and start; basic stack smoke test |
+
+#### Remaining (0.6–0.11)
+
+**0.6 — Root README & Developer Onboarding**
+
+Add a root `README.md` that enables a new developer to run the stack without reading implementation docs. It must include:
+
+- Project overview
+- Required tools (Docker, Docker Compose, etc.)
+- `.env` setup from `.env.example`
+- `docker compose up` instructions
+- Service list and ports
+- Health endpoint list
+- Common Docker commands (`build`, `logs`, `ps`, `down`, etc.)
+- Basic troubleshooting (port conflicts, unhealthy services, missing env vars)
+
+**0.7 — Nginx Reverse Proxy Foundation**
+
+Add nginx as the Phase 0 reverse proxy with:
+
+- `nginx/` config directory
+- nginx service in `docker-compose.yml`
+- `/api/` routed to backend
+- `/` routed to frontend
+- port `80` exposed on the host
+- Validation that the frontend works through `http://localhost`
+- Validation that the API works through `http://localhost/api/...`
+
+**0.8 — Application Healthchecks**
+
+Add Docker Compose healthchecks for application services:
+
+- `backend`
+- `frontend`
+- `coordinator-agent`
+- `sales-agent`
+- `content-agent`
+- `support-agent`
+- `celery-worker`, if it remains part of the Phase 0 stack
+- `celery-beat`, if a reliable healthcheck is practical
+
+Use `depends_on.condition: service_healthy` only where it is appropriate and does not create fragile startup coupling (e.g. avoid unnecessary chains that block unrelated services).
+
+**0.9 — Agent Docker Build Context Alignment**
+
+Fix and standardize agent Docker build contexts so all agent containers can import their local package and shared package modules correctly, including:
+
+- `agents.shared.*`
+- `agents.coordinator.*`
+- `agents.sales.*`
+- `agents.content.*`
+- `agents.support.*`
+
+This step must prevent `ModuleNotFoundError` at container startup and keep agent behavior as Phase 0 placeholders only (no real agent business logic).
+
+**0.10 — Dev Bind Mounts & Hot Reload**
+
+Add development bind mounts and hot-reload support where appropriate:
+
+- Backend source bind mount
+- Frontend source bind mount
+- Agent source bind mounts
+- Protection against overwriting dependency directories (`node_modules`, `.next`, Python `__pycache__`, virtual environments, etc.)
+- Use `docker-compose.override.yml` if that is the cleanest way to keep dev-only behavior separate from production-like compose defaults
+
+**0.11 — Final Phase 0 Verification & Sign-off**
+
+Perform the final Phase 0 verification checklist, including:
+
+- Clean Docker build (`docker compose build --no-cache` or equivalent fresh build)
+- Full stack startup (`docker compose up`)
+- `docker compose config` validates without errors
+- `docker compose ps` shows expected services healthy
+- Direct backend health check (e.g. `GET` backend `/health` on internal port)
+- Backend health through nginx (`http://localhost/api/...` health path)
+- Frontend direct access (internal port, if exposed for debugging)
+- Frontend through nginx on port 80 (`http://localhost`)
+- All agent health checks return 200
+- Postgres and Redis health checks pass
+- Celery worker/beat verification if present in the stack
+- Final clean `git status` (no unintended generated artifacts)
+- Creation of `docs/phases/step-0.11.md` documenting commands run, results, and any known limitations
 
 **Dependencies:** None
 
-**Acceptance criteria:**
+**Final Phase 0 acceptance criteria:**
 
-- `docker compose up` starts all services without crash loops
-- `GET /health` (or equivalent) returns 200 from each agent and backend
-- Frontend loads a placeholder page through nginx on port 80
+- Root `README.md` exists and explains how to run the stack
+- Docker Compose stack starts successfully
+- Nginx exposes the frontend on port 80
+- Nginx routes API traffic to backend (`/api/` → backend)
+- Backend, frontend, agents, Postgres, Redis, and Celery services are healthy where applicable
+- All agent Docker builds work with shared imports (`agents.shared.*`, per-agent packages) without `ModuleNotFoundError`
+- Development bind mounts / hot reload are configured safely (dependency dirs not overwritten)
+- Final verification is documented in `docs/phases/step-0.11.md`
+
+**Phase 0 exit gate (before Phase 1):**
+
+Phase 0 is **not complete** until subphases **0.6–0.11** are implemented and all final acceptance criteria above pass. Do not begin Phase 1 (Django Core & Multi-Tenancy) until:
+
+1. A developer can clone the repo, copy `.env.example` → `.env`, and start the full stack using only the root README.
+2. `http://localhost` serves the frontend placeholder and `http://localhost/api/...` reaches the backend through nginx.
+3. `docker compose ps` reports healthy status for backend, frontend, all four agents, Postgres, Redis, and Celery services (where present).
+4. Agent containers start without import errors and respond on their health endpoints.
+5. Dev override bind mounts work for local iteration without breaking installed dependencies inside containers.
+6. `docs/phases/step-0.11.md` records the final verification run and sign-off.
 
 ---
 

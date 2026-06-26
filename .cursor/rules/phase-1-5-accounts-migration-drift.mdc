@@ -1,0 +1,74 @@
+---
+description: Phase 1.5 guardrail for closing accounts.User migration drift only
+globs:
+  - "backend/accounts/**"
+  - "backend/tenants/**"
+  - "backend/stores/**"
+  - "docs/phases/step-0.0.md"
+  - "docs/phases/step-1.5.md"
+alwaysApply: false
+---
+
+# Phase 1.5 — Accounts Migration Drift Closure
+
+This rule applies only when working on Phase 1.5.
+
+## Goal
+
+Close the migration drift for `accounts.User` and its custom manager so that Django reports no pending migrations.
+
+## Allowed work
+
+You may:
+
+* Inspect `docs/phases/step-0.0.md`, especially Phase 1.5.
+* Inspect `backend/accounts/models.py`.
+* Inspect `backend/accounts/managers.py`.
+* Inspect existing `backend/accounts/migrations/`.
+* Create the missing accounts migration if Django reports one.
+* Run migration verification commands.
+* Run relevant tests for `accounts`, `tenants`, and `stores`.
+* Create `docs/phases/step-1.5.md`.
+
+## Required verification
+
+At minimum, verify:
+
+* `python manage.py makemigrations --check --dry-run` passes.
+* Relevant accounts, tenants, and stores tests pass.
+* `AUTH_USER_MODEL = "accounts.User"` remains valid.
+* The custom `accounts.managers.UserManager` remains the active manager for the custom user model.
+
+Use the repository’s existing execution style. If the project normally runs Django commands through Docker Compose, use the backend container. If local execution is already documented and working, local commands are acceptable.
+
+## Strict boundaries
+
+Do not:
+
+* Implement Phase 1.6 API isolation work.
+* Add or modify store API endpoints.
+* Add tenant-scoped store read API tests.
+* Modify `seed_prestia`.
+* Implement Phase 1.7, 1.8, or 1.9 work.
+* Refactor unrelated apps.
+* Change authentication behavior.
+* Change tenant middleware behavior.
+* Change store scoping behavior.
+* Rewrite existing migrations unless there is a clear, documented reason.
+* Modify Phase 0, Phase 2, Phase 3, or later documentation.
+* Update `docs/phases/step-0.0.md` unless a tiny Phase 1.5 status note is absolutely necessary.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.5.md` with:
+
+* Goal
+* Scope
+* Files changed
+* Migration drift root cause
+* Implementation summary
+* Verification commands and results
+* Acceptance criteria checklist
+* Known limitations or non-goals
+
+The documentation must clearly state that Phase 1.5 only closes accounts migration drift and does not implement Phase 1.6 API-level tenant isolation.

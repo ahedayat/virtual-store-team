@@ -913,7 +913,7 @@ Phase 0 is **not complete** until subphases **0.6–0.11** are implemented and a
 
 **Goal:** Tenant-scoped data model, enforced isolation, and an explicit tenant-scoping contract suitable for MVP.
 
-**Status:** Partially complete — subphases **1.1–1.4** are done; subphases **1.5–1.9** remain before Phase 1 can close.
+**Status:** Complete — subphases **1.1–1.9** are implemented, verified, and documented in `docs/phases/step-1.9.md`.
 
 **Deliverables (full Phase 1 scope):**
 
@@ -932,7 +932,7 @@ Phase 0 is **not complete** until subphases **0.6–0.11** are implemented and a
 
 **Subphases:**
 
-#### Completed (1.1–1.4)
+#### Completed (1.1–1.9)
 
 | Subphase | Name | Summary |
 |----------|------|---------|
@@ -940,8 +940,13 @@ Phase 0 is **not complete** until subphases **0.6–0.11** are implemented and a
 | **1.2** | Store model | `Store` model (`tenant`, `name`, `slug`, `timezone`, `currency`); tenant-scoped slug uniqueness; admin registration. Documented in `docs/phases/step-1.2.md`. |
 | **1.3** | Tenant middleware | `TenantMiddleware` sets `request.tenant` from authenticated user/session (MVP: no subdomain resolution). Documented in `docs/phases/step-1.3.md`. |
 | **1.4** | Cross-tenant access denial (queryset/middleware) | `TenantScopedModel`, `TenantScopedManager`, and scoped accessors (`for_tenant`, `get_for_tenant`, `for_request`); queryset/middleware-level cross-tenant denial tests. Documented in `docs/phases/step-1.4.md`. |
+| **1.5** | Accounts migration drift closure | `accounts/0002_alter_user_managers.py`; `makemigrations --check --dry-run` passes. Documented in `docs/phases/step-1.5.md`. |
+| **1.6** | Tenant-scoped Store API acceptance | `GET /api/stores/<store_id>/`; HTTP-level cross-tenant isolation tests. Documented in `docs/phases/step-1.6.md`. |
+| **1.7** | `seed_prestia` baseline alignment | Idempotent Prestia tenant and main store; catalog seeding attributed to later phases. Documented in `docs/phases/step-1.7.md`. |
+| **1.8** | Tenant scoping contract finalization | Explicit scoped-access MVP contract; tenant-facing path audit. Documented in `docs/phases/step-1.8.md`. |
+| **1.9** | Phase 1 final verification & closure | Full verification, test/migration results, sign-off. Documented in `docs/phases/step-1.9.md`. |
 
-#### Remaining (1.5–1.9)
+#### Subphase reference (1.5–1.9 detail)
 
 **1.5 — Accounts Migration Drift Closure**
 
@@ -1077,7 +1082,7 @@ Final review after completing Phase 1.5–1.8. Confirm Phase 1 can be closed bef
 
 **Phase 1 Completion Gate:**
 
-Phase 1 is **not complete** until subphases **1.1 through 1.9** are complete and all of the following are satisfied:
+Phase 1 is **complete** as of 2026-06-26. Subphases **1.1 through 1.9** are implemented and documented. All gate requirements are satisfied and recorded in `docs/phases/step-1.9.md`:
 
 1. Subphases 1.1–1.9 are implemented and documented.
 2. Migration drift is resolved (`makemigrations --check --dry-run` passes; no pending `accounts` migrations).
@@ -1086,7 +1091,7 @@ Phase 1 is **not complete** until subphases **1.1 through 1.9** are complete and
 5. Tenant scoping contract is explicit (scoped accessors for tenant-facing paths; intentional admin/system escape hatches).
 6. Final verification passes and is recorded in `docs/phases/step-1.9.md`.
 
-Do not begin Phase 2 (Auth & Users) until the Phase 1 Completion Gate is satisfied.
+Phase 2 (Auth & Users) may proceed.
 
 ---
 

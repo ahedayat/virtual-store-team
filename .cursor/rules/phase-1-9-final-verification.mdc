@@ -1,0 +1,126 @@
+---
+description: Phase 1.9 guardrail for final Phase 1 verification and closure only
+globs:
+  - "backend/tenants/**"
+  - "backend/stores/**"
+  - "backend/accounts/**"
+  - "backend/**/tests/**"
+  - "backend/**/management/commands/seed_prestia.py"
+  - "docs/phases/step-0.0.md"
+  - "docs/phases/step-1.1.md"
+  - "docs/phases/step-1.2.md"
+  - "docs/phases/step-1.3.md"
+  - "docs/phases/step-1.4.md"
+  - "docs/phases/step-1.5.md"
+  - "docs/phases/step-1.6.md"
+  - "docs/phases/step-1.7.md"
+  - "docs/phases/step-1.8.md"
+  - "docs/phases/step-1.9.md"
+alwaysApply: false
+---
+
+# Phase 1.9 — Phase 1 Final Verification & Closure
+
+This rule applies only when working on Phase 1.9.
+
+## Goal
+
+Perform final verification for Phase 1 and decide whether Phase 1 can be closed.
+
+This step is verification and documentation focused. It must not introduce new features.
+
+## Required outcome
+
+By the end of this step:
+
+* Phase 1.1 through Phase 1.8 are reviewed.
+* Phase 1 acceptance criteria are verified.
+* Migration state is clean.
+* Relevant tests pass.
+* Final completion decision is documented in `docs/phases/step-1.9.md`.
+* Phase 1 is marked complete only if every closure requirement passes.
+
+## Required verification scope
+
+Verify all Phase 1 closure requirements:
+
+1. Subphases 1.1–1.9 are implemented and documented.
+2. Tenant and Store models exist and behave as expected.
+3. `TenantMiddleware` resolves request tenant correctly.
+4. Tenant-scoped accessors are available and used for tenant-facing access.
+5. `AUTH_USER_MODEL = "accounts.User"` is valid.
+6. There is no accounts migration drift.
+7. `python manage.py makemigrations --check --dry-run` passes.
+8. Store API tenant isolation is proven at HTTP level.
+9. A Prestia user cannot read another tenant's store ID through the API.
+10. `seed_prestia` creates an idempotent Prestia tenant and main store baseline.
+11. Tenant scoping contract is explicit and documented.
+12. Relevant tests pass.
+
+## Allowed work
+
+You may:
+
+* Inspect Phase 1 documentation files:
+
+  * `docs/phases/step-1.1.md`
+  * `docs/phases/step-1.2.md`
+  * `docs/phases/step-1.3.md`
+  * `docs/phases/step-1.4.md`
+  * `docs/phases/step-1.5.md`
+  * `docs/phases/step-1.6.md`
+  * `docs/phases/step-1.7.md`
+  * `docs/phases/step-1.8.md`
+* Inspect current Phase 1 code in `accounts`, `tenants`, and `stores`.
+* Run verification commands.
+* Add or update `docs/phases/step-1.9.md`.
+* Optionally update only the Phase 1 status in `docs/phases/step-0.0.md` if and only if all Phase 1 closure requirements pass.
+
+## Strict boundaries
+
+Do not:
+
+* Implement Phase 2.
+* Add authentication/login/JWT/service JWT features.
+* Add new APIs.
+* Modify tenant middleware unless a verification-blocking bug is discovered.
+* Modify tenant scoping architecture.
+* Modify `seed_prestia` unless a verification-blocking bug is discovered.
+* Modify frontend code.
+* Modify agent code.
+* Modify unrelated apps.
+* Make broad formatting-only changes.
+* Rewrite migrations unless absolutely necessary and justified.
+* Mark Phase 1 complete if any required verification fails.
+
+## If verification fails
+
+If any check fails:
+
+* Do not hide or bypass the failure.
+* Do not mark Phase 1 complete.
+* Document Phase 1 as not complete in `docs/phases/step-1.9.md`.
+* Include exact failing commands, errors, and required follow-up work.
+* Keep changes limited to documentation unless a tiny verification-blocking fix is explicitly justified.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.9.md` with:
+
+* Title: `Step 1.9 — Phase 1 Final Verification & Closure`
+* Goal
+* Scope
+* Phase 1 subphase review
+* Verification checklist
+* Commands run
+* Results
+* Final Phase 1 completion decision
+* Evidence for each acceptance criterion
+* Files changed
+* Known limitations, if any
+* Next step:
+
+  * If Phase 1 passes: Phase 2 — Auth & Users
+  * If Phase 1 fails: list exact remaining fixes before Phase 2
+
+The documentation must clearly state whether Phase 1 is complete or not complete.

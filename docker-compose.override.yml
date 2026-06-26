@@ -1,0 +1,69 @@
+# Local development overrides — merged automatically by `docker compose`.
+# Keeps production-like defaults in docker-compose.yml; bind mounts and reload live here.
+
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  coordinator-agent:
+    volumes:
+      - ./agents:/app/agents
+    command:
+      [
+        "uvicorn",
+        "agents.coordinator.app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8100",
+        "--reload",
+      ]
+
+  sales-agent:
+    volumes:
+      - ./agents:/app/agents
+    command:
+      [
+        "uvicorn",
+        "agents.sales.app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8101",
+        "--reload",
+      ]
+
+  content-agent:
+    volumes:
+      - ./agents:/app/agents
+    command:
+      [
+        "uvicorn",
+        "agents.content.app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8102",
+        "--reload",
+      ]
+
+  support-agent:
+    volumes:
+      - ./agents:/app/agents
+    command:
+      [
+        "uvicorn",
+        "agents.support.app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8103",
+        "--reload",
+      ]

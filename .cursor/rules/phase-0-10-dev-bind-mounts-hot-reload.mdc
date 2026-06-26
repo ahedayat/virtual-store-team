@@ -1,0 +1,107 @@
+---
+description: Phase 0.10 development bind mounts and hot reload rules
+globs:
+  - "docker-compose.yml"
+  - "docker-compose.override.yml"
+  - "backend/**"
+  - "frontend/**"
+  - "agents/**"
+  - "README.md"
+  - "docs/phases/step-0.10.md"
+  - ".cursor/rules/phase-0-10-dev-bind-mounts-hot-reload.mdc"
+alwaysApply: false
+---
+
+# Phase 0.10 — Dev Bind Mounts & Hot Reload Rules
+
+This rule applies only to Phase 0.10.
+
+## Scope
+
+Phase 0.10 adds development bind mounts and hot reload support for local iteration.
+
+Services in scope:
+
+* `backend`
+* `frontend`
+* `coordinator-agent`
+* `sales-agent`
+* `content-agent`
+* `support-agent`
+
+Preferred approach:
+
+* Keep production-like defaults in `docker-compose.yml`.
+* Add development-only bind mounts and hot reload behavior in `docker-compose.override.yml`.
+
+## Allowed changes
+
+Allowed files to create or update:
+
+* `docker-compose.override.yml`
+* `docker-compose.yml`, only if a tiny compatibility adjustment is strictly required
+* `backend/**`, only if a minimal entrypoint/command compatibility change is required for reload
+* `frontend/**`, only if a minimal command compatibility change is required for reload
+* `agents/**`, only if a minimal command compatibility change is required for reload
+* `README.md`, only for dev workflow documentation updates
+* `docs/phases/step-0.10.md`
+* `.cursor/rules/phase-0-10-dev-bind-mounts-hot-reload.mdc`
+
+## Required outcome
+
+Local development should support source changes without rebuilding images for common edits:
+
+* Backend source changes should reload Django development server where the current backend command supports it.
+* Frontend source changes should be reflected by the Next.js development server.
+* Agent source changes should reload FastAPI/uvicorn services where practical.
+* Dependency directories must not be overwritten by host bind mounts.
+
+## Dependency directory protection
+
+Do not bind mount over dependency directories in a way that breaks installed dependencies inside containers.
+
+Protect or avoid clobbering:
+
+* `frontend/node_modules`
+* `frontend/.next`
+* Python virtual environments
+* Python package installation directories
+* `__pycache__`
+* `.pytest_cache`
+* other generated or cache directories
+
+Use anonymous volumes or named volumes where appropriate to preserve container-installed dependencies.
+
+## Constraints
+
+Do not redesign nginx routing.
+
+Do not add or redesign application healthchecks.
+
+Do not change agent Docker build context strategy except for preserving the Phase 0.9 result.
+
+Do not implement new backend, frontend, agent, tenant, auth, Celery, LLM, or business logic features.
+
+**Do not add any new business logic, tenant workflows, agent behavior, or application features in this phase.**
+
+**Do not perform final Phase 0 verification or sign-off. That belongs to Phase 0.11.**
+
+Do not hardcode Prestia-specific behavior.
+
+Do not turn dev-only behavior into a production requirement.
+
+## Documentation expectations
+
+`docs/phases/step-0.10.md` must document:
+
+* Goal
+* Scope
+* Files created or updated
+* Dev bind mounts added by service
+* Hot reload behavior by service
+* Dependency directory protection strategy
+* Validation commands
+* Known limitations
+* What was intentionally left for Phase 0.11
+
+Phase 0.10 does not close Phase 0 by itself.

@@ -108,6 +108,45 @@ docker compose up -d
 
 On first start, allow **10–30 seconds** for Postgres/Redis healthchecks, backend migrations, and the Next.js dev server to become ready.
 
+### Local development (hot reload)
+
+Docker Compose **automatically merges** `docker-compose.override.yml` with `docker-compose.yml`. The override file adds development bind mounts and reload behavior only; production-like service definitions stay in `docker-compose.yml`.
+
+| Service | What reloads on source edit |
+|---------|----------------------------|
+| `backend` | Django `runserver` autoreload (`.py` under `./backend`) |
+| `frontend` | Next.js dev server / Fast Refresh (`.tsx`, etc. under `./frontend`) |
+| Agent services | uvicorn `--reload` (`.py` under `./agents`) |
+
+Typical workflow:
+
+```bash
+docker compose up --build    # first time or after dependency/Dockerfile changes
+docker compose up -d         # detached dev stack
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f coordinator-agent
+docker compose restart backend   # if a service needs a manual restart
+```
+
+**Rebuild images** when `requirements.txt`, `package.json`, or Dockerfiles change:
+
+```bash
+docker compose build backend frontend coordinator-agent sales-agent content-agent support-agent
+docker compose up -d
+```
+
+**Reset volumes** if frontend `node_modules` / `.next` or Postgres data is stale (destructive for DB):
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+`celery-worker` and `celery-beat` are not bind-mounted in Phase 0.10; restart them after backend Celery task changes.
+
+Phase 0.10 does **not** close Phase 0 — **0.11** final verification is still required. See [docs/phases/step-0.10.md](docs/phases/step-0.10.md).
+
 ---
 
 ## Stopping the stack
@@ -335,11 +374,28 @@ docker compose up
 
 **Fix:** Check logs for the service (`docker compose logs -f <service>`). Backend may still be migrating — wait for `start_period` (60s). For agents, confirm the image was rebuilt after Phase 0.9 context changes (see agent import troubleshooting above).
 
+### Hot reload not picking up changes
+
+**Symptom:** Edits on the host do not appear in a running container.
+
+**Fix:** Confirm `docker-compose.override.yml` exists and `docker compose config` shows bind mounts for the service. Restart the service: `docker compose restart <service>`. For dependency changes, rebuild the image (see [Local development (hot reload)](#local-development-hot-reload)). Celery services require a manual restart after backend task code changes.
+
+### Frontend `node_modules` or `.next` issues after bind mount
+
+**Symptom:** `Module not found` in frontend, or stale Next.js build artifacts.
+
+**Fix:** Anonymous volumes protect `/app/node_modules` and `/app/.next` inside the container. Rebuild and reset if needed:
+
+```bash
+docker compose down
+docker compose build --no-cache frontend
+docker compose up -d frontend
+```
+
 ### Issues planned for later Phase 0 steps
 
 | Need | Phase |
 |------|-------|
-| Hot reload via bind mounts | **0.10** — dev override |
 | Final stack sign-off checklist | **0.11** — verification |
 
 ---
@@ -357,10 +413,10 @@ docker compose up
 | **0.7** | Complete | nginx reverse proxy on port 80 |
 | **0.8** | Complete | Application healthchecks in Compose |
 | **0.9** | Complete | Agent Docker build context alignment (shared `agents.*` imports) |
-| **0.10** | Planned | Dev bind mounts and hot reload |
+| **0.10** | Complete | Dev bind mounts and hot reload (`docker-compose.override.yml`) |
 | **0.11** | Planned | Final Phase 0 verification and sign-off |
 
-**Phase 0 is not complete** until steps **0.10–0.11** are done and documented in `docs/phases/step-0.11.md`.
+**Phase 0 is not complete** until step **0.11** is done and documented in `docs/phases/step-0.11.md`.
 
 ---
 
@@ -378,6 +434,7 @@ docker compose up
 | [docs/phases/step-0.7.md](docs/phases/step-0.7.md) | nginx reverse proxy foundation |
 | [docs/phases/step-0.8.md](docs/phases/step-0.8.md) | Application healthchecks |
 | [docs/phases/step-0.9.md](docs/phases/step-0.9.md) | Agent Docker build context alignment |
+| [docs/phases/step-0.10.md](docs/phases/step-0.10.md) | Dev bind mounts and hot reload |
 
 ---
 

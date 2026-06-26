@@ -1,0 +1,183 @@
+---
+description: Step 7.3 — Sales Agent JSON schema validation before return
+globs:
+  - "agents/sales/**/*.py"
+  - "agents/shared/schemas/**/*.py"
+  - "tests/**/*.py"
+  - "docs/phases/step-7.3.md"
+alwaysApply: false
+---
+
+# Step 7.3 — Sales Agent Schema Validation
+
+This rule applies only to Step 7.3 of Phase 7.
+
+## Scope
+
+Implement JSON/schema validation for the Sales Agent output before it is returned from the Sales Agent endpoint or pipeline.
+
+Do not implement Step 7.4 in this step.
+Do not create `docs/examples/sales_output.json`.
+Do not redesign the whole Sales Agent architecture unless required for schema validation.
+
+Recommended locations:
+
+* `agents/sales/analysis.py` — validate LLM/mock output before return from `run_sales_analysis` (or equivalent)
+* `agents/sales/empty_sales.py` — ensure empty-sales fallback is validated on the same path
+* `agents/shared/schemas/sales.py` — existing `SalesAnalysisResult` and `SalesRecommendation` schemas
+* `agents/shared/schemas/validation.py` — existing `validate_agent_response` from Step 6.3
+* `agents/sales/tests/test_schema_validation.py` (or equivalent)
+
+Reuse existing modules:
+
+* Step 6.3 `validate_agent_response` and `AgentSchemaValidationError`
+* Step 7.1 prompt/rubric contract for recommendation field semantics
+* Step 7.2 empty-sales fallback output (must pass the same validation gate)
+
+## Required behavior
+
+- Every Sales Agent output must be validated against the existing `SalesAnalysisResult` schema before return.
+- Every recommendation must be validated against the existing `SalesRecommendation` schema (nested validation via `SalesAnalysisResult`).
+- Invalid LLM JSON must not be returned directly.
+- Invalid recommendation payloads must either be rejected, sanitized into a valid structure, or converted into a controlled validation error response depending on existing project conventions.
+- The `/run` endpoint or equivalent Sales Agent entrypoint must return only valid schema-compatible output.
+- Empty-sales fallback from Step 7.2 must also pass the same schema validation.
+- Mock LLM output must pass the same validation path as real LLM output.
+- Do not bypass validation in tests or development mode.
+
+Validation should run after JSON parsing and before any response serialization or HTTP return. Prefer a single validation gate shared by all code paths (LLM, mock, empty-sales).
+
+## Recommendation constraints
+
+Each sales recommendation must include:
+
+- `priority`
+- `action_type`
+- `title`
+- `description`
+- `rationale`
+- `payload`
+
+Allowed action types:
+
+- `sales.restock`
+- `sales.discount`
+- `sales.follow_up`
+
+Priority must be an integer from 1 to 5.
+
+Schemas use strict validation (`extra="forbid"`) per Step 6.3. Unknown fields at any level must be rejected.
+
+### Valid recommendation example
+
+```json
+{
+  "priority": 2,
+  "action_type": "sales.restock",
+  "title": "Restock: Example SKU",
+  "description": "Short manager-facing summary.",
+  "rationale": "Low stock with recent sales velocity (non-PII).",
+  "payload": {
+    "product_id": "uuid",
+    "sku": "SKU-001",
+    "current_stock": 2,
+    "suggested_order_qty": 20
+  }
+}
+```
+
+### Invalid examples (must fail validation)
+
+- Missing `rationale` or any other required field.
+- `action_type`: `"sales.promote"` (not in allowed literals).
+- `priority`: `0`, `6`, or non-integer.
+- Extra top-level field on recommendation or `SalesAnalysisResult`.
+
+## Error handling
+
+- Validation errors should be logged without dumping raw LLM payloads or full prompt context.
+- Logs may include service name, `report_run_id`, validation error summary, and correlation/request ID.
+- Do not include raw PII in logs.
+- Do not leak internal stack traces through public agent responses.
+- Return a controlled error response or fallback according to existing API conventions.
+- Use `AgentSchemaValidationError` field summaries from Step 6.3 where applicable; do not expose raw model output in HTTP responses.
+
+## Architecture constraints
+
+- No direct database access from agents.
+- Use only Django internal API payloads or sanitized context.
+- Use the shared schema package (`agents/shared/schemas/`).
+- Use the shared LLM abstraction.
+- Do not hardcode Prestia-specific behavior.
+- Do not execute actions directly.
+- Do not return raw malformed LLM JSON to clients.
+- Do not log raw LLM responses, full prompt context, or customer PII at INFO level or above.
+
+## Out of scope
+
+Do not implement later Phase 7 subtasks in this step.
+
+* **7.4** — Example output documentation at `docs/examples/sales_output.json`
+
+Also out of scope unless a minimal hook is required for validation:
+
+* Full LangGraph orchestration
+* Coordinator changes
+* Content or support agent logic
+* Real LLM provider integration beyond the existing abstraction
+* Django API writes or action execution
+* Prestia-specific hardcoded business rules
+
+## Testing expectations
+
+Add focused unit tests for schema validation behavior.
+
+Tests should cover:
+
+- valid Sales Agent output passes validation;
+- missing required recommendation field fails validation;
+- invalid `action_type` fails validation;
+- out-of-range priority fails validation;
+- malformed LLM JSON is handled safely;
+- empty-sales fallback passes validation;
+- `/run` or the main Sales Agent entrypoint never returns unvalidated output;
+- extra unknown fields are rejected (strict schema policy).
+
+Tests must not call real LLM providers or Django APIs. Use mock LLM fixtures and deterministic payloads.
+
+## Documentation
+
+Create:
+
+`docs/phases/step-7.3.md`
+
+The document must explain:
+
+- validation flow;
+- schemas used (`SalesAnalysisResult`, `SalesRecommendation`, `validate_agent_response`);
+- valid and invalid recommendation examples;
+- error handling policy;
+- logging and PII constraints;
+- what was intentionally left for later steps;
+- test commands.
+
+The documentation should also include:
+
+* Step title and goal
+* Files changed
+* Validation entry points (functions or pipeline hooks)
+* Integration with Step 6.3 shared validator and Step 7.2 empty-sales path
+* Tests added
+* Validation commands
+* Next steps: 7.4
+
+## Acceptance criteria
+
+* All Sales Agent return paths validate against `SalesAnalysisResult` before output.
+* Invalid LLM JSON and invalid recommendations are never returned as-is.
+* Empty-sales fallback from Step 7.2 passes the same validation gate.
+* Mock and real LLM paths share the same validation logic.
+* No validation bypass in tests or development mode.
+* Focused unit tests cover the cases listed above.
+* `docs/phases/step-7.3.md` exists.
+* Step 7.4 example output doc is not implemented in this step.

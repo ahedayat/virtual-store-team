@@ -22,14 +22,14 @@ The local development stack is orchestrated with Docker Compose. Main services:
 | AI | **sales-agent** | Sales and inventory analysis (FastAPI, port 8101) |
 | AI | **content-agent** | Content drafts (FastAPI, port 8102) |
 | AI | **support-agent** | Support message analysis (FastAPI, port 8103) |
-| Edge | **nginx** | Planned single entrypoint for Phase 0.7 (`/` → frontend, `/api/` → backend) |
+| Edge | **nginx** | Single local entrypoint (`/` → frontend, `/api/` → backend) on port 80 |
 
-**nginx is not in the stack yet.** Until Phase 0.7 is complete, access services directly on their exposed host ports (for example `http://localhost:3000` for the frontend and `http://localhost:8000` for the API).
+**nginx is the preferred local entrypoint** on `http://localhost` (port 80). Direct host ports for backend, frontend, and agents remain available for debugging.
 
 High-level flow:
 
 ```
-Browser → (future nginx) → Next.js → Django REST API
+Browser → nginx (port 80) → Next.js → Django REST API
                               ↓
                     Postgres, Redis, Celery
                               ↓
@@ -144,24 +144,36 @@ Source of truth: `docker-compose.yml` in the repository root.
 | `sales-agent` | Sales analysis | 8101 | **8101** | `GET /health` |
 | `content-agent` | Content drafts | 8102 | **8102** | `GET /health` |
 | `support-agent` | Support analysis | 8103 | **8103** | `GET /health` |
-| `nginx` | Reverse proxy (planned) | 80 | **80** (planned) | Not implemented — Phase 0.7 |
+| `nginx` | Reverse proxy (preferred entrypoint) | 80 | **80** | `GET /` (frontend), `GET /api/health/` (backend health) |
 
-Postgres and Redis are reachable only inside the `app-network` Docker network. Application services publish the host ports listed above for local development.
+Postgres and Redis are reachable only inside the `app-network` Docker network. **Use nginx on port 80** for the frontend and API in normal development. Application services also publish direct host ports (8000, 3000, 8100–8103) for debugging.
 
 ---
 
 ## Health checks and smoke tests
 
-### Application HTTP endpoints
+### Through nginx (preferred)
 
 After `docker compose up`, from your host:
 
 ```bash
-# Backend
+# Frontend placeholder via nginx
+curl -s http://localhost/ | head -5
+# Expected: HTML containing "Virtual Store Team Dashboard"
+
+# Backend health via nginx
+curl -s http://localhost/api/health/
+# Expected: {"status": "ok"}
+```
+
+### Direct ports (debugging)
+
+```bash
+# Backend (direct)
 curl -s http://localhost:8000/health/
 # Expected: {"status": "ok"}
 
-# Frontend placeholder
+# Frontend placeholder (direct)
 curl -s http://localhost:3000/ | head -5
 # Expected: HTML containing "Virtual Store Team Dashboard"
 
@@ -204,6 +216,7 @@ docker compose logs -f
 # Follow logs for one service
 docker compose logs -f backend
 docker compose logs -f frontend
+docker compose logs -f nginx
 docker compose logs -f celery-worker
 
 # Rebuild without cache
@@ -228,9 +241,9 @@ docker compose config
 
 ### Port already in use
 
-**Symptom:** `Bind for 0.0.0.0:8000 failed: port is already allocated` (or 3000, 8100–8103).
+**Symptom:** `Bind for 0.0.0.0:80 failed: port is already allocated` (or 8000, 3000, 8100–8103).
 
-**Fix:** Stop the conflicting process or change the host port mapping in `docker-compose.yml` (only if you own that change in a later phase). Common culprits: another Django dev server, local Postgres, or a previous compose stack still running (`docker compose down`).
+**Fix:** Stop the conflicting process or change the host port mapping in `docker-compose.yml` (only if you own that change in a later phase). Common culprits: another web server on port 80, local Django/Next.js dev servers, or a previous compose stack still running (`docker compose down`).
 
 ### Database not ready / backend exits during migrate
 
@@ -248,7 +261,7 @@ docker compose config
 
 **Symptom:** `curl http://localhost:3000` times out or connection refused.
 
-**Fix:** Confirm `frontend` is `Up` in `docker compose ps`. Next.js dev compile can take several seconds on first request — check `docker compose logs -f frontend`. Until **Phase 0.7**, use port **3000** directly; there is no nginx on port 80 yet.
+**Fix:** Confirm `frontend` is `Up` in `docker compose ps`. Next.js dev compile can take several seconds on first request — check `docker compose logs -f frontend`. Try the nginx entrypoint: `curl http://localhost/`. For direct access, use port **3000**.
 
 ### Backend migrations failing
 
@@ -284,7 +297,6 @@ docker compose up
 
 | Need | Phase |
 |------|-------|
-| Single URL on port 80, `/api/` routing | **0.7** — nginx |
 | `docker compose ps` shows app services `healthy` | **0.8** — application healthchecks |
 | Agent `ModuleNotFoundError` at startup | **0.9** — Docker build context alignment |
 | Hot reload via bind mounts | **0.10** — dev override |
@@ -301,8 +313,8 @@ docker compose up
 | **0.3** | Complete | Four agent Dockerfiles and FastAPI placeholders |
 | **0.4** | Complete | Docker Compose and `.env.example` wiring |
 | **0.5** | Complete | Initial full-stack Docker verification |
-| **0.6** | **This step** | Root README and developer onboarding |
-| **0.7** | Planned | nginx reverse proxy on port 80 |
+| **0.6** | Complete | Root README and developer onboarding |
+| **0.7** | **This step** | nginx reverse proxy on port 80 |
 | **0.8** | Planned | Application healthchecks in Compose |
 | **0.9** | Planned | Agent Docker build context alignment |
 | **0.10** | Planned | Dev bind mounts and hot reload |
@@ -322,7 +334,8 @@ docker compose up
 | [docs/phases/step-0.3.md](docs/phases/step-0.3.md) | Agent Docker placeholders |
 | [docs/phases/step-0.4.md](docs/phases/step-0.4.md) | Docker Compose and environment wiring |
 | [docs/phases/step-0.5.md](docs/phases/step-0.5.md) | Initial full-stack verification |
-| [docs/phases/step-0.6.md](docs/phases/step-0.6.md) | Root README and developer onboarding (this step) |
+| [docs/phases/step-0.6.md](docs/phases/step-0.6.md) | Root README and developer onboarding |
+| [docs/phases/step-0.7.md](docs/phases/step-0.7.md) | nginx reverse proxy foundation (this step) |
 
 ---
 
@@ -338,8 +351,8 @@ docker compose up --build
 In another terminal:
 
 ```bash
-curl -s http://localhost:8000/health/
-curl -s http://localhost:3000/ | head -5
+curl -s http://localhost/
+curl -s http://localhost/api/health/
 curl -s http://localhost:8100/health
 ```
 

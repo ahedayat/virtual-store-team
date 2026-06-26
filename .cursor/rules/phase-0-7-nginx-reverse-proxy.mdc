@@ -1,0 +1,71 @@
+---
+description: Phase 0.7 Nginx reverse proxy foundation rules
+globs:
+  - "docker-compose.yml"
+  - "nginx/**"
+  - "README.md"
+  - "docs/phases/step-0.7.md"
+  - ".cursor/rules/phase-0-7-nginx-reverse-proxy.mdc"
+alwaysApply: false
+---
+
+# Phase 0.7 — Nginx Reverse Proxy Foundation Rules
+
+This rule applies only to Phase 0.7.
+
+## Scope
+
+Phase 0.7 adds nginx as the Phase 0 reverse proxy and single local HTTP entrypoint.
+
+Allowed implementation scope:
+
+* Create an `nginx/` configuration directory.
+* Add nginx configuration for local development.
+* Add an `nginx` service to `docker-compose.yml`.
+* Route frontend traffic from `/` to the `frontend` service.
+* Route API traffic from `/api/` to the `backend` service.
+* Expose nginx on host port `80`.
+* Add minimal proxy headers required for correct local behavior.
+* Update README only where needed to reflect nginx entrypoint usage.
+* Create `docs/phases/step-0.7.md`.
+
+## Constraints
+
+Do not implement application healthchecks in this phase. Healthchecks belong to Phase 0.8.
+
+Do not fix or standardize agent Docker build contexts in this phase. Agent Docker context alignment belongs to Phase 0.9.
+
+Do not add development bind mounts or hot reload configuration in this phase. Dev bind mounts belong to Phase 0.10.
+
+Do not perform final Phase 0 sign-off in this phase. Final verification belongs to Phase 0.11.
+
+Do not modify backend, frontend, or agent application behavior unless a tiny compatibility change is strictly required and documented.
+
+Do not add TLS or production certificate handling in this phase. Phase 0.7 is local HTTP reverse proxy foundation only.
+
+Do not hardcode Prestia-specific behavior.
+
+## Expected nginx behavior
+
+The nginx service must support:
+
+* `http://localhost` → Next.js frontend
+* `http://localhost/api/...` → Django backend API path
+* A backend health route through nginx, preferably `http://localhost/api/health/`
+
+If the backend currently exposes `/health/` instead of `/api/health/`, nginx may map `/api/health/` to backend `/health/` without changing backend code.
+
+## Documentation expectations
+
+`docs/phases/step-0.7.md` must document:
+
+* Goal
+* Scope
+* Files created or updated
+* Nginx routing behavior
+* Compose service changes
+* Validation commands
+* Known limitations
+* What was intentionally left for Phase 0.8, 0.9, 0.10, and 0.11
+
+Phase 0.7 does not close Phase 0 by itself.

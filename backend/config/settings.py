@@ -119,3 +119,25 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+COORDINATOR_AGENT_URL = os.environ.get(
+    "COORDINATOR_AGENT_URL",
+    "http://coordinator-agent:8100",
+)
+COORDINATOR_DAILY_REPORT_PATH = os.environ.get(
+    "COORDINATOR_DAILY_REPORT_PATH",
+    "/workflows/daily-report",
+)
+COORDINATOR_HTTP_TIMEOUT_SECONDS = int(
+    os.environ.get("COORDINATOR_HTTP_TIMEOUT_SECONDS", "30")
+)
+
+
+def _join_service_url(base_url: str, path: str) -> str:
+    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
+COORDINATOR_DAILY_REPORT_URL = _join_service_url(
+    COORDINATOR_AGENT_URL,
+    COORDINATOR_DAILY_REPORT_PATH,
+)

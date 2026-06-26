@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -24,7 +25,10 @@ from operations.constants import (
     MIN_ACTION_PRIORITY,
     REPORT_RUN_STATUS_COMPLETED,
     REPORT_RUN_STATUS_FAILED,
+    REPORT_RUN_STATUS_QUEUED,
     REPORT_RUN_STATUS_RUNNING,
+    REPORT_RUN_ACTIVE_STATUSES,
+    REPORT_RUN_TERMINAL_STATUSES,
     SUPPORTED_ACTION_TYPES,
 )
 from operations.exceptions import (
@@ -540,7 +544,109 @@ class AgentOutputService:
         }
 
 
+@dataclass(frozen=True)
+class CreateQueuedRunResult:
+    created: bool
+    report_run: ReportRun
+
+
 class ReportRunService:
+    @staticmethod
+    def is_active(report_run: ReportRun) -> bool:
+        return report_run.status in REPORT_RUN_ACTIVE_STATUSES
+
+    @staticmethod
+    def is_terminal(report_run: ReportRun) -> bool:
+        return report_run.status in REPORT_RUN_TERMINAL_STATUSES
+
+    @classmethod
+    def get_active_run_for_store(cls, *, tenant: Tenant, store: Store) -> ReportRun | None:
+        if store.tenant_id != tenant.id:
+            raise ReportRunScopeError("Store does not belong to the trusted tenant context.")
+        return (
+            ReportRun.objects.filter(
+                tenant=tenant,
+                store=store,
+                status__in=REPORT_RUN_ACTIVE_STATUSES,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+
+    @classmethod
+    def create_queued_run_for_store(
+        cls,
+        *,
+        tenant: Tenant,
+        store: Store,
+    ) -> CreateQueuedRunResult:
+        if store.tenant_id != tenant.id:
+            raise ReportRunScopeError("Store does not belong to the trusted tenant context.")
+
+        with transaction.atomic():
+            existing = cls.get_active_run_for_store(tenant=tenant, store=store)
+            if existing is not None:
+                return CreateQueuedRunResult(created=False, report_run=existing)
+
+            try:
+                report_run = ReportRun.objects.create(
+                    tenant=tenant,
+                    store=store,
+                    status=REPORT_RUN_STATUS_QUEUED,
+                )
+            except IntegrityError:
+                existing = cls.get_active_run_for_store(tenant=tenant, store=store)
+                if existing is not None:
+                    return CreateQueuedRunResult(created=False, report_run=existing)
+                raise
+
+        return CreateQueuedRunResult(created=True, report_run=report_run)
+
+    @classmethod
+    def mark_running(cls, *, report_run: ReportRun) -> ReportRun:
+        with transaction.atomic():
+            locked_report_run = ReportRun.objects.select_for_update().get(pk=report_run.pk)
+            if locked_report_run.status in REPORT_RUN_TERMINAL_STATUSES:
+                return locked_report_run
+            if locked_report_run.status == REPORT_RUN_STATUS_QUEUED:
+                locked_report_run.status = REPORT_RUN_STATUS_RUNNING
+                locked_report_run.error_message = ""
+                locked_report_run.save(
+                    update_fields=["status", "error_message", "updated_at"]
+                )
+        locked_report_run.refresh_from_db()
+        return locked_report_run
+
+    @classmethod
+    def mark_failed(cls, *, report_run: ReportRun, error_message: str) -> ReportRun:
+        safe_message = (error_message or "Coordinator request failed.").strip()
+        with transaction.atomic():
+            locked_report_run = ReportRun.objects.select_for_update().get(pk=report_run.pk)
+            if locked_report_run.status in REPORT_RUN_TERMINAL_STATUSES:
+                return locked_report_run
+            locked_report_run.status = REPORT_RUN_STATUS_FAILED
+            locked_report_run.error_message = safe_message[:2000]
+            locked_report_run.save(
+                update_fields=["status", "error_message", "updated_at"]
+            )
+        locked_report_run.refresh_from_db()
+        return locked_report_run
+
+    @classmethod
+    def mark_completed_if_still_running(cls, *, report_run: ReportRun) -> ReportRun:
+        """Skeleton completion when coordinator HTTP succeeds without internal complete API."""
+        with transaction.atomic():
+            locked_report_run = ReportRun.objects.select_for_update().get(pk=report_run.pk)
+            if locked_report_run.status != REPORT_RUN_STATUS_RUNNING:
+                return locked_report_run
+            locked_report_run.status = REPORT_RUN_STATUS_COMPLETED
+            locked_report_run.error_message = ""
+            locked_report_run.save(
+                update_fields=["status", "error_message", "updated_at"]
+            )
+        locked_report_run.refresh_from_db()
+        return locked_report_run
+
     @classmethod
     def complete_from_ai_payload(
         cls,

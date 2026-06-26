@@ -1,0 +1,119 @@
+---
+description: Step 5.3 rules for preventing duplicate concurrent ReportRun records per store.
+globs:
+  - "backend/**"
+  - "docs/phases/step-5.3.md"
+alwaysApply: false
+---
+
+# Step 5.3 — Prevent Duplicate Concurrent Report Runs Rules
+
+This rule applies only to Phase 5.3: preventing duplicate concurrent daily report runs per store.
+
+## Scope
+
+Implement a safe guard that ensures each store can have at most one active report run at a time.
+
+Active report statuses should include:
+
+* `queued`
+* `running`
+
+If the project uses different status constants, adapt to the existing model names while preserving the same meaning.
+
+## Required behavior
+
+* The report generation API must not create or enqueue a new report if the same store already has an active `ReportRun`.
+* The duplicate check must be concurrency-safe.
+* Prefer a database-level guarantee where possible, such as a conditional unique constraint on `(tenant, store)` for active statuses.
+* Also keep an application-level check for a clean API response.
+* If an active run exists, return a controlled response, preferably HTTP `409 Conflict`, including the existing `report_run_id` and current status.
+* Do not enqueue a Celery task for duplicate requests.
+* Terminal statuses such as `completed`, `failed`, `cancelled`, or equivalent must allow a new report run.
+* Different stores under the same tenant must be allowed to generate reports independently.
+* Different tenants must remain isolated.
+* The logic must not hardcode Prestia-specific assumptions.
+
+## Recommended implementation pattern
+
+Create or update a centralized service method, for example:
+
+* `ReportRunService.create_queued_run_for_store(...)`
+* or the equivalent service location already used by the project
+
+This method should:
+
+1. Run inside `transaction.atomic()`.
+2. Check for an existing active run for the same tenant/store.
+3. Create a new queued `ReportRun` only when no active run exists.
+4. Enqueue the Celery task only after the new run is successfully created.
+5. Handle database `IntegrityError` safely if a concurrent request wins the race.
+
+## Database constraint
+
+If the current database/backend supports it, add a conditional unique constraint similar in meaning to:
+
+```python
+UniqueConstraint(
+    fields=["tenant", "store"],
+    condition=Q(status__in=["queued", "running"]),
+    name="unique_active_report_run_per_store",
+)
+```
+
+Adapt field names and status constants to the existing project.
+
+## Out of scope
+
+Do not implement Step 5.4.
+
+* Do not create a mock coordinator HTTP server.
+* Do not write full coordinator integration tests.
+
+Do not implement Phase 6 or later.
+
+* Do not build agent scaffold.
+* Do not implement LangGraph.
+* Do not implement specialist agents.
+* Do not implement LLM provider abstraction.
+
+Do not change the completed/failed coordinator task lifecycle beyond what is necessary to support duplicate-run safety.
+
+## Tests required
+
+Add focused tests for:
+
+* First request creates a queued `ReportRun`.
+* Second request for the same store while a run is `queued` returns a duplicate/409 response.
+* Second request for the same store while a run is `running` returns a duplicate/409 response.
+* A new request after `completed` is allowed.
+* A new request after `failed` is allowed.
+* Different stores can create active runs independently.
+* The duplicate path does not enqueue a Celery task.
+* If feasible, test database constraint behavior or simulated race handling.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-5.3.md`
+
+The documentation must include:
+
+* Step title and goal
+* Why duplicate prevention is required
+* Active vs terminal statuses
+* Files changed
+* API behavior for duplicate requests
+* Database/application-level concurrency strategy
+* Tests added
+* Validation commands
+* What is intentionally deferred to Step 5.4
+
+## Acceptance criteria
+
+* A store cannot have two active report runs at the same time.
+* Duplicate requests return a controlled response and do not enqueue Celery.
+* Completed or failed runs do not block future report generation.
+* The implementation is tenant-scoped and store-scoped.
+* `docs/phases/step-5.3.md` exists.

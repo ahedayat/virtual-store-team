@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 from stores.models import Store
 from tenants.models import Tenant, TenantScopedModel
@@ -23,6 +24,7 @@ from operations.constants import (
     ACTION_STATUS_PENDING_APPROVAL,
     ACTION_STATUS_QUEUED,
     ACTION_STATUS_REJECTED,
+    REPORT_RUN_ACTIVE_STATUSES,
     REPORT_RUN_STATUS_COMPLETED,
     REPORT_RUN_STATUS_FAILED,
     REPORT_RUN_STATUS_QUEUED,
@@ -84,6 +86,13 @@ class ReportRun(TenantScopedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "store"],
+                condition=Q(status__in=REPORT_RUN_ACTIVE_STATUSES),
+                name="unique_active_report_run_per_store",
+            ),
+        ]
 
     def clean(self):
         super().clean()

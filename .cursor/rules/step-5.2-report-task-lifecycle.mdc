@@ -1,0 +1,116 @@
+---
+description: Step 5.2 rules for implementing the Celery daily report task lifecycle.
+globs:
+  - "backend/**"
+  - ".env.example"
+  - "docker-compose.yml"
+  - "docs/phases/step-5.2.md"
+alwaysApply: false
+---
+
+# Step 5.2 — Daily Report Celery Task Lifecycle Rules
+
+This rule applies only to Phase 5.2: implementing the daily report Celery task skeleton and ReportRun status lifecycle.
+
+## Scope
+
+Implement the minimal asynchronous daily report lifecycle:
+
+1. Create or enqueue a `ReportRun` with status `queued`.
+2. Run a Celery task named `reports.generate_daily` or equivalent.
+3. Transition the `ReportRun` to `running`.
+4. Call the coordinator-agent HTTP endpoint.
+5. Mark the `ReportRun` as `completed` on success.
+6. Mark the `ReportRun` as `failed` with an error message on failure.
+
+## Required behavior
+
+* The Celery task must be idempotent enough to avoid corrupting an already-terminal `ReportRun`.
+* The task must use the existing Phase 4 report models and status fields.
+* The task must use environment variables for the coordinator URL.
+* The coordinator URL must not be hardcoded.
+* HTTP timeout must be configurable via environment variable or Django settings.
+* Errors from the coordinator call must be caught and persisted on the `ReportRun`.
+* The task must log useful identifiers such as `report_run_id`, `tenant_id`, and `store_id`.
+* Logs must not dump raw payloads or PII.
+* If a dashboard API trigger does not yet exist, add the minimal `POST /api/reports/generate/` endpoint needed to create a queued `ReportRun` and enqueue the Celery task.
+
+## Environment variables
+
+Use or add these variables where appropriate:
+
+* `COORDINATOR_AGENT_URL`
+* `COORDINATOR_DAILY_REPORT_PATH`
+* `COORDINATOR_HTTP_TIMEOUT_SECONDS`
+
+Reasonable defaults may be used for local Docker Compose, for example:
+
+* `http://coordinator-agent:8100`
+* `/workflows/daily-report`
+* `30`
+
+## Out of scope
+
+Do not implement Step 5.3 in this step.
+
+* Do not prevent duplicate concurrent report runs per store yet.
+* Do not add locking or active-run constraints yet.
+
+Do not implement Step 5.4 in this step.
+
+* Do not build a full mock coordinator integration test server yet.
+* Do not overbuild end-to-end integration testing.
+
+Do not implement Phase 6 or later.
+
+* Do not build agent scaffold.
+* Do not implement LangGraph.
+* Do not implement real specialist agents.
+* Do not implement LLM provider abstraction.
+* Do not write sales/content/support agent logic.
+
+## Coordinator call contract
+
+Use a minimal, future-compatible request body:
+
+```json
+{
+  "report_run_id": "<uuid>",
+  "tenant_id": "<uuid>",
+  "store_id": "<uuid>",
+  "context_ref": {
+    "type": "report_run",
+    "id": "<uuid>"
+  }
+}
+```
+
+If service JWT minting already exists from Phase 2, use it. If not, keep a clear TODO and do not invent insecure auth logic.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-5.2.md`
+
+The documentation must explain:
+
+* Goal of Step 5.2
+* Files changed
+* Celery task lifecycle
+* ReportRun status transitions
+* Coordinator HTTP call contract
+* Error handling behavior
+* Environment variables
+* Validation commands
+* What is intentionally deferred to Steps 5.3 and 5.4
+
+## Acceptance criteria
+
+* A report generation request creates or uses a `ReportRun` with status `queued`.
+* The Celery worker picks up the task.
+* The task changes the run status to `running`.
+* A successful coordinator response marks the run as `completed`.
+* A failed coordinator call marks the run as `failed` and stores an error message.
+* The implementation does not add duplicate-run prevention.
+* The implementation does not add real agent orchestration.

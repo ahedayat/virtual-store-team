@@ -1,0 +1,51 @@
+---
+description: Step 5.1 rules for configuring Celery, Redis broker settings, and Docker Compose worker entrypoints.
+globs:
+  - "backend/**"
+  - "docker-compose.yml"
+  - ".env.example"
+  - "docs/phases/step-5.1.md"
+alwaysApply: false
+---
+
+# Step 5.1 — Celery & Redis Wiring Rules
+
+This step is limited to Celery infrastructure wiring.
+
+## Scope
+
+- Configure Celery inside the Django backend project.
+- Read broker/result backend settings from environment variables.
+- Ensure Redis is used as the Celery broker.
+- Configure Docker Compose commands/entrypoints for:
+  - `celery-worker`
+  - optionally `celery-beat` if it already exists in compose or is part of the current stack
+- Update `.env.example` with required Celery/Redis variables.
+- Add only minimal smoke-test or debug task if needed to verify worker bootstrapping.
+- Write documentation in `docs/phases/step-5.1.md`.
+
+## Out of scope
+
+- Do not implement the full `reports.generate_daily` workflow.
+- Do not call the coordinator-agent yet.
+- Do not implement duplicate ReportRun prevention.
+- Do not implement action execution logic beyond a placeholder if absolutely necessary.
+- Do not add real LLM, LangGraph, or agent orchestration code.
+- Do not change Phase 4 models or state machines unless a small import path fix is required.
+
+## Required behavior
+
+- Celery must be initialized in the Django project using the standard `celery.py` pattern.
+- Django must auto-discover Celery tasks from installed apps.
+- Worker startup must not require hardcoded local Redis URLs.
+- Configuration must work inside Docker Compose using service DNS, e.g. `redis://redis:6379/0`.
+- The backend and Celery containers must share the same Django settings module.
+- Any new environment variable must be documented in `.env.example`.
+
+## Validation
+
+Cursor must explain how to validate this step, preferably with:
+
+- `docker compose up --build`
+- `docker compose logs celery-worker`
+- an optional Celery inspect or smoke-task check

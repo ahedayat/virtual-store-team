@@ -47,6 +47,44 @@ services:
     networks:
       - app-network
 
+  celery-worker:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+    command: ["celery", "-A", "config", "worker", "-l", "info"]
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  celery-beat:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+    command: ["celery", "-A", "config", "beat", "-l", "info"]
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
   frontend:
     build:
       context: ./frontend

@@ -110,3 +110,12 @@ if not DEBUG and not JWT_SERVICE_SECRET:
     raise ImproperlyConfigured(
         "JWT_SERVICE_SECRET environment variable is required when DEBUG is False."
     )
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", REDIS_URL)
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", REDIS_URL)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE

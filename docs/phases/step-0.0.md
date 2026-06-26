@@ -911,37 +911,182 @@ Phase 0 is **not complete** until subphases **0.6–0.11** are implemented and a
 
 ### Phase 1 — Django Core & Multi-Tenancy
 
-**Goal:** Tenant-scoped data model and enforced isolation.
+**Goal:** Tenant-scoped data model, enforced isolation, and an explicit tenant-scoping contract suitable for MVP.
 
-**Deliverables:**
+**Status:** Partially complete — subphases **1.1–1.4** are done; subphases **1.5–1.9** remain before Phase 1 can close.
+
+**Deliverables (full Phase 1 scope):**
 
 - Django apps: `tenants`, `stores`, `accounts`
 - Models: `Tenant`, `Store`, `User` (custom user with `tenant_id`)
-- Tenant middleware and base model mixin `TenantScopedModel`
-- Django admin registration
-- Initial migration
-
-**Tasks:**
-
-1. Custom user model linked to tenant
-2. Tenant and Store CRUD (admin only for MVP)
-3. Automatic tenant filtering on querysets
-4. Management command `seed_prestia` (creates tenant + store skeleton, no products yet)
-
-**Subtasks:**
-
-- 1.1 Define `Tenant` (`id`, `slug`, `name`, `settings` JSON)
-- 1.2 Define `Store` (`tenant`, `name`, `slug`, `timezone`, `currency`)
-- 1.3 Implement `TenantMiddleware` from subdomain or user session (MVP: user session only)
-- 1.4 Add tests for cross-tenant access denial
+- `TenantMiddleware` resolving `request.tenant` on every request (MVP: session/user-based)
+- Tenant-scoped queryset/manager primitives (`TenantScopedModel`, `for_tenant`, `get_for_tenant`, `for_request`, or equivalent)
+- Django admin registration for tenant-owned models
+- Initial and follow-up migrations with no drift (`makemigrations --check --dry-run` passes)
+- Minimal tenant-scoped store read API path with HTTP-level cross-tenant isolation tests
+- `seed_prestia` baseline: idempotent Prestia tenant and main store creation (catalog seeding deferred to later phases)
+- Documented tenant scoping contract for tenant-facing vs admin/system access paths
+- Final verification documented in `docs/phases/step-1.9.md` (created during subphase 1.9 implementation, not in this planning step)
 
 **Dependencies:** Phase 0
 
-**Acceptance criteria:**
+**Subphases:**
+
+#### Completed (1.1–1.4)
+
+| Subphase | Name | Summary |
+|----------|------|---------|
+| **1.1** | Tenant model | `Tenant` model (`id`, `slug`, `name`, `settings` JSON); admin registration; initial migration. Documented in `docs/phases/step-1.1.md`. |
+| **1.2** | Store model | `Store` model (`tenant`, `name`, `slug`, `timezone`, `currency`); tenant-scoped slug uniqueness; admin registration. Documented in `docs/phases/step-1.2.md`. |
+| **1.3** | Tenant middleware | `TenantMiddleware` sets `request.tenant` from authenticated user/session (MVP: no subdomain resolution). Documented in `docs/phases/step-1.3.md`. |
+| **1.4** | Cross-tenant access denial (queryset/middleware) | `TenantScopedModel`, `TenantScopedManager`, and scoped accessors (`for_tenant`, `get_for_tenant`, `for_request`); queryset/middleware-level cross-tenant denial tests. Documented in `docs/phases/step-1.4.md`. |
+
+#### Remaining (1.5–1.9)
+
+**1.5 — Accounts Migration Drift Closure**
+
+Fix the migration drift for `accounts.User`. Ensure the custom `accounts.managers.UserManager` is reflected in migrations and `python manage.py makemigrations --check --dry-run` passes.
+
+*Scope:*
+
+- Fix the migration drift for `accounts.User`.
+- Ensure the custom `accounts.managers.UserManager` is reflected in migrations.
+- Ensure `python manage.py makemigrations --check --dry-run` passes.
+
+*Expected deliverables:*
+
+- Missing accounts migration committed.
+- Migration check passes.
+- Relevant accounts/tenants/stores tests pass.
+- Documentation file to be created later: `docs/phases/step-1.5.md`.
+
+*Acceptance criteria:*
+
+- No pending migration is reported for `accounts`.
+- `AUTH_USER_MODEL = "accounts.User"` remains valid.
+- User manager state is consistent between model code and migrations.
+
+**1.6 — Tenant-Scoped Store API Acceptance**
+
+Add or complete a minimal tenant-scoped store read API path. Prove via HTTP-level tests that a user from one tenant cannot read another tenant's store by ID.
+
+*Scope:*
+
+- Add or complete a minimal tenant-scoped store read API path.
+- Prove via HTTP-level tests that a user from one tenant cannot read another tenant's store by ID.
+
+*Expected deliverables:*
+
+- Minimal store read endpoint or existing endpoint hardening.
+- API tests for same-tenant access.
+- API tests for cross-tenant denial.
+- Documentation file to be created later: `docs/phases/step-1.6.md`.
+
+*Acceptance criteria:*
+
+- Authenticated Prestia user can read the Prestia store when allowed.
+- Authenticated Prestia user cannot read another tenant's store by direct ID.
+- Cross-tenant access returns 404 or 403 according to project convention.
+- The Phase 1 API acceptance criterion is explicitly satisfied.
+
+**1.7 — Phase 1 Seed Prestia Baseline Alignment**
+
+Clarify the Phase 1 baseline responsibility of `seed_prestia`. Ensure the Phase 1 baseline is tenant/store creation, not later catalog seeding. Keep later catalog/product/category seed behavior attributed to later phases.
+
+*Scope:*
+
+- Clarify the Phase 1 baseline responsibility of `seed_prestia`.
+- Ensure the Phase 1 baseline is tenant/store creation, not later catalog seeding.
+- Keep later catalog/product/category seed behavior attributed to later phases.
+
+*Expected deliverables:*
+
+- Verified idempotent Prestia tenant creation.
+- Verified idempotent main Prestia store creation.
+- Clear distinction between Phase 1 tenant/store baseline and later catalog seed data.
+- Documentation file to be created later: `docs/phases/step-1.7.md`.
+
+*Acceptance criteria:*
+
+- `seed_prestia` guarantees a `prestia` tenant.
+- `seed_prestia` guarantees a main store for Prestia.
+- Running the command repeatedly does not create duplicate tenant/store records.
+- Later catalog data is not incorrectly treated as a Phase 1 requirement.
+
+**1.8 — Tenant Scoping Contract Finalization**
+
+Finalize the tenant scoping contract for the MVP. Resolve the wording mismatch between “automatic tenant filtering” and explicit scoped access. Decide and document whether the accepted Phase 1 contract is fully automatic filtering through default managers, or explicit scoped access through approved manager/queryset methods.
+
+*Scope:*
+
+- Finalize the tenant scoping contract for the MVP.
+- Resolve the wording mismatch between “automatic tenant filtering” and explicit scoped access.
+- Decide and document whether the accepted Phase 1 contract is:
+  - fully automatic filtering through default managers, or
+  - explicit scoped access through approved manager/queryset methods.
+
+*Preferred MVP contract:*
+
+- Explicit tenant-scoped access is acceptable if all tenant-facing code paths use `for_tenant`, `get_for_tenant`, `for_request`, or equivalent safe accessors.
+- Unscoped access may remain available only for admin/system-level use where intentional.
+
+*Expected deliverables:*
+
+- Clear tenant scoping contract.
+- Verification that tenant-facing API/public paths do not rely on unsafe unscoped access.
+- Documentation file to be created later: `docs/phases/step-1.8.md`.
+
+*Acceptance criteria:*
+
+- The Phase 1 documentation no longer ambiguously requires unsafe or undefined automatic filtering.
+- Tenant-facing access paths are required to use scoped access.
+- Admin/system escape hatches are intentional and documented.
+
+**1.9 — Phase 1 Final Verification & Closure**
+
+Final review after completing Phase 1.5–1.8. Confirm Phase 1 can be closed before moving forward.
+
+*Scope:*
+
+- Final review after completing Phase 1.5–1.8.
+- Confirm Phase 1 can be closed before moving forward.
+
+*Expected deliverables:*
+
+- Full Phase 1 verification.
+- Test and migration check results.
+- Final completion decision.
+- Documentation file to be created later: `docs/phases/step-1.9.md`.
+
+*Acceptance criteria:*
+
+- All Phase 1 subphases 1.1–1.9 are complete.
+- Tenant, store, middleware, accounts, seed baseline, and API isolation requirements are satisfied.
+- `makemigrations --check --dry-run` passes.
+- Relevant tests pass.
+- Phase 1 can be marked complete.
+
+**Final Phase 1 acceptance criteria:**
 
 - Admin can create tenant and store
-- `seed_prestia` creates isolated Prestia tenant
-- API request as Prestia user cannot read another tenant's store ID
+- `AUTH_USER_MODEL = "accounts.User"` is valid with no accounts migration drift
+- `seed_prestia` creates an idempotent Prestia tenant and main store baseline (no catalog seeding required in Phase 1)
+- Tenant-facing access uses explicit scoped accessors per the finalized contract
+- API request as Prestia user cannot read another tenant's store ID (proven at HTTP level)
+- Final verification is documented in `docs/phases/step-1.9.md`
+
+**Phase 1 Completion Gate:**
+
+Phase 1 is **not complete** until subphases **1.1 through 1.9** are complete and all of the following are satisfied:
+
+1. Subphases 1.1–1.9 are implemented and documented.
+2. Migration drift is resolved (`makemigrations --check --dry-run` passes; no pending `accounts` migrations).
+3. API-level cross-tenant store isolation is proven (HTTP tests, not queryset/middleware tests alone).
+4. `seed_prestia` baseline is aligned (idempotent tenant/store creation; catalog seeding attributed to later phases).
+5. Tenant scoping contract is explicit (scoped accessors for tenant-facing paths; intentional admin/system escape hatches).
+6. Final verification passes and is recorded in `docs/phases/step-1.9.md`.
+
+Do not begin Phase 2 (Auth & Users) until the Phase 1 Completion Gate is satisfied.
 
 ---
 

@@ -12,6 +12,7 @@ from agents.shared.schemas.errors import (
     AgentSchemaError,
     AgentSchemaValidationError,
 )
+from agents.shared.schemas.sales import SalesAnalysisResult, SalesRecommendation
 from agents.shared.schemas.validation import export_json_schema, validate_agent_response
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "AgentSchemaValidationError",
     "AgentWarning",
     "BaseAgentResponse",
+    "SalesAnalysisResult",
+    "SalesRecommendation",
     "ScopeViolation",
     "StrictAgentModel",
     "export_json_schema",

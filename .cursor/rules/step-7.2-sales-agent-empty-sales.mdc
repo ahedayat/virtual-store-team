@@ -1,0 +1,147 @@
+---
+description: Step 7.2 — Sales Agent empty-sales graceful handling
+globs:
+  - "agents/sales/**/*.py"
+  - "agents/shared/schemas/**/*.py"
+  - "tests/**/*.py"
+  - "docs/phases/step-7.2.md"
+alwaysApply: false
+---
+
+# Step 7.2 — Sales Agent Empty-Sales Handling
+
+This rule applies only to Step 7.2 of Phase 7.
+
+## Scope
+
+Implement graceful handling for empty or zero-sales input in the Sales Agent.
+
+Do not implement the full Phase 7 pipeline in this step.
+Do not complete Step 7.3 schema validation before return.
+Do not create `docs/examples/sales_output.json`; that belongs to Step 7.4.
+
+Recommended locations:
+
+* `agents/sales/app/` or `agents/sales/` — empty-sales detection and deterministic fallback
+* `agents/shared/schemas/` — `SalesAnalysisResult` if not already defined
+* `agents/sales/tests/test_empty_sales.py` (or equivalent)
+
+Reuse existing Step 7.1 prompt/rubric modules only when the non-empty path still needs them. The empty-sales path must not require an LLM call.
+
+## Empty sales definition
+
+Treat the sales input as empty when one or more of these conditions is true:
+
+- sales summary is missing or null;
+- `order_count` is 0;
+- `total_revenue` is 0 or null;
+- top products list is empty;
+- sales period exists but contains no completed orders;
+- sales API returns an empty but valid payload.
+
+## Required behavior
+
+When sales data is empty:
+
+- The Sales Agent must return a valid response object compatible with the existing `SalesAnalysisResult` schema.
+- It must not crash.
+- It must not call the LLM if deterministic empty-sales handling is enough.
+- It must not hallucinate sales, revenue, product demand, trends, or customer behavior.
+- It must not create restock, discount, or follow-up recommendations based only on missing sales.
+- It may include a neutral summary such as: “No sales were recorded for this period.”
+- When `AI_OUTPUT_LANGUAGE` is Persian (`fa`), use a natural Persian message such as: “در این بازه زمانی فروشی ثبت نشده است.”
+- Output must be deterministic, valid, and non-hallucinated for empty-sales input.
+- It may include low-risk operational observations if the existing schema supports them.
+- It should return an empty `recommendations` list unless there is non-sales inventory evidence that the existing business logic already supports.
+- If low stock exists but there are no sales, do not mark it as urgent solely because inventory is low.
+- Do not emit `sales.restock`, `sales.discount`, or `sales.follow_up` unless the recommendation is supported by available data.
+
+### Expected fallback output shape
+
+Return a `SalesAnalysisResult`-compatible object. At minimum:
+
+- `summary` — neutral no-sales message (no fabricated metrics)
+- `recommendations` — empty list by default
+- Any other required schema fields — safe defaults or nulls as the schema allows
+
+Do not invent `top_products`, revenue figures, trend labels, or customer segments when sales input is empty.
+
+## Safety and architecture constraints
+
+- No direct database access from agents.
+- Use only Django internal API payloads or already-provided sanitized context.
+- No raw PII in prompts, outputs, or logs.
+- Do not execute actions directly.
+- Do not hardcode Prestia-specific behavior.
+- Keep the logic generic and tenant-scoped.
+
+## Out of scope
+
+Do not implement later Phase 7 subtasks in this step.
+
+* **7.3** — Full JSON schema validation of agent responses before return
+* **7.4** — Example output documentation at `docs/examples/sales_output.json`
+
+Also out of scope:
+
+* Real LLM provider calls for the empty-sales path
+* FastAPI `/run` or workflow endpoints on `sales-agent` unless a minimal hook is required
+* Django API integration beyond consuming already-sanitized sales payloads
+* LangGraph orchestration
+* Coordinator changes
+* Content or support agent logic
+* Direct database access
+* Prestia-specific hardcoded business rules
+
+## Testing expectations
+
+Add focused unit tests for empty-sales behavior.
+
+Tests should cover:
+
+- zero `order_count`;
+- zero or missing `total_revenue`;
+- empty `top_products`;
+- missing optional sales fields;
+- valid output shape;
+- no fabricated recommendations;
+- no LLM call when deterministic fallback is used, if the current structure allows this assertion.
+
+Tests must not call real LLM providers or Django APIs.
+
+## Documentation
+
+Create:
+
+`docs/phases/step-7.2.md`
+
+The document must explain:
+
+- what counts as empty sales;
+- fallback behavior;
+- expected output shape;
+- recommendation policy in no-sales cases;
+- what was intentionally left for later steps;
+- test commands.
+
+The documentation should also include:
+
+* Step title and goal
+* Files changed
+* Empty-sales detection API (functions or entry points)
+* Fallback output contract
+* Tests added
+* Validation commands
+* Next steps: 7.3, 7.4
+
+## Acceptance criteria
+
+* Empty or zero-sales input is detected without crashing.
+* Deterministic fallback returns a valid `SalesAnalysisResult`-compatible response.
+* No LLM call on the empty-sales path when deterministic handling suffices.
+* No hallucinated sales metrics, trends, or unsupported recommendations.
+* `recommendations` is empty unless supported by non-sales evidence already in scope.
+* Low stock alone does not produce urgent `sales.restock`, `sales.discount`, or `sales.follow_up` actions.
+* Focused unit tests cover the cases listed above.
+* `docs/phases/step-7.2.md` exists.
+* Step 7.3 validation and Step 7.4 example output doc are not implemented in this step.

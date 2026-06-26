@@ -396,7 +396,7 @@ docker compose up -d frontend
 
 | Need | Phase |
 |------|-------|
-| Final stack sign-off checklist | **0.11** — verification |
+| Final stack sign-off blockers | **0.11** — see `docs/phases/step-0.11.md` |
 
 ---
 
@@ -414,9 +414,9 @@ docker compose up -d frontend
 | **0.8** | Complete | Application healthchecks in Compose |
 | **0.9** | Complete | Agent Docker build context alignment (shared `agents.*` imports) |
 | **0.10** | Complete | Dev bind mounts and hot reload (`docker-compose.override.yml`) |
-| **0.11** | Planned | Final Phase 0 verification and sign-off |
+| **0.11** | Complete (verification) | Final Phase 0 verification run documented in `docs/phases/step-0.11.md` |
 
-**Phase 0 is not complete** until step **0.11** is done and documented in `docs/phases/step-0.11.md`.
+**Phase 0 is not complete.** Step **0.11** verification found blockers (frontend entrypoint permissions with dev bind mount, missing `httpx` in sales/content agent images, nginx not starting). See [docs/phases/step-0.11.md](docs/phases/step-0.11.md) before starting Phase 1.
 
 ---
 

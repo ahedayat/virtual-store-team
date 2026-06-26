@@ -1,0 +1,96 @@
+---
+description: Phase 0.11 final Phase 0 verification and sign-off rules
+globs:
+  - "docker-compose.yml"
+  - "docker-compose.override.yml"
+  - "README.md"
+  - "docs/phases/step-0.11.md"
+  - ".cursor/rules/phase-0-11-final-verification.mdc"
+alwaysApply: false
+---
+
+# Phase 0.11 — Final Phase 0 Verification & Sign-off Rules
+
+This rule applies only to Phase 0.11.
+
+## Scope
+
+Phase 0.11 is the final verification and sign-off gate for Phase 0.
+
+The goal is to verify that all Phase 0 deliverables from subphases 0.1 through 0.10 are present and working together as a clean local Docker Compose stack.
+
+This phase is primarily a validation and documentation phase.
+
+## Allowed changes
+
+Allowed files to create or update:
+
+* `docs/phases/step-0.11.md`
+* `.cursor/rules/phase-0-11-final-verification.mdc`
+* `README.md`, only if a tiny final Phase 0 status note or validation command correction is required
+
+## Verification scope
+
+Verify:
+
+* Root README onboarding flow
+* `.env.example` → `.env` workflow
+* Docker Compose config validity
+* Clean Docker build
+* Full stack startup
+* nginx as the local entrypoint
+* frontend through nginx on `http://localhost`
+* backend through nginx on `http://localhost/api/...`
+* direct backend health, if accessible
+* direct frontend access, if intentionally exposed
+* all four FastAPI agent health endpoints
+* Postgres health
+* Redis health
+* Celery worker health or operational status
+* Celery beat health or operational status, if present
+* Agent containers start without import errors
+* Development override exists and does not break the stack
+* Final `git status` is clean except for intentional Phase 0.11 documentation/rule changes
+
+## Constraints
+
+Do not implement missing Phase 0 features in this phase.
+
+Do not add nginx behavior.
+
+Do not add new application healthchecks.
+
+Do not change agent Docker build contexts.
+
+Do not add or redesign dev bind mounts.
+
+Do not implement backend, frontend, agent, tenant, auth, Celery, LLM, or business logic features.
+
+Do not hardcode Prestia-specific behavior.
+
+Do not mark Phase 0 as complete if any final acceptance criterion fails.
+
+If verification fails, document the failure clearly in `docs/phases/step-0.11.md` and mark Phase 0 as not ready for sign-off.
+
+## Sign-off rule
+
+Phase 0 may be marked complete only if all final Phase 0 acceptance criteria pass.
+
+If any required service fails to build, start, become healthy, or respond on the expected route, Phase 0 must remain incomplete and the blocker must be documented.
+
+## Documentation expectations
+
+`docs/phases/step-0.11.md` must document:
+
+* Goal
+* Scope
+* Verification environment
+* Files reviewed
+* Commands executed
+* Results by service
+* Final acceptance checklist
+* Any failures or known limitations
+* Git status
+* Final decision: Phase 0 complete or Phase 0 not complete
+
+Do not fabricate command results. If a command cannot be run, document it as not run and explain why.

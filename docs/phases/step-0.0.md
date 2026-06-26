@@ -1053,29 +1053,116 @@ Factory: `get_llm_provider()` reads `LLM_PROVIDER` and provider-specific env var
 
 **Deliverables:**
 
-- Content agent pipeline
-- Output schema: `ContentSuggestions` (captions, product descriptions)
-- Actions of type `content.instagram_draft`, `content.product_description`
+- Content Agent prompt and brand voice handling
+- Content Agent runtime pipeline
+- Output schema: `ContentSuggestions` / `ContentDraft`
+- Draft limit enforcement
+- FastAPI `/run` endpoint
+- Mock/LLM generation path
+- Action payload mapping for `content.instagram_draft` and `content.product_description`
+- Approval-required behavior
+- Example output document (`docs/examples/content_output.json`)
 
 **Tasks:**
 
-1. Pull top products from Django API
-2. Generate Persian captions (default) with campaign angle
-3. Return reviewable drafts (approval required)
+1. Pull or consume top/relevant products from Django internal APIs or coordinator-provided context.
+2. Generate Persian captions by default using the configured brand voice and campaign angle.
+3. Support English output when `AI_OUTPUT_LANGUAGE=en`.
+4. Return reviewable drafts only.
+5. Validate all generated output against schema.
+6. Limit draft count to the configured maximum.
+7. Map validated drafts to approval-required content actions.
+8. Provide deterministic tests using MockProvider or fixtures.
 
 **Subtasks:**
 
-- 8.1 Prompt template with brand voice from `store.settings`
-- 8.2 Limit drafts to N per run (e.g. 3) for MVP
-- 8.3 Schema validation tests
+#### 8.1 Prompt template with brand voice from `store.settings`
 
-**Dependencies:** Phase 6 (parallel with Phase 7 after Phase 6 completes)
+- Reusable Content Agent prompt template for Instagram captions and product descriptions.
+- Brand voice extraction from `store.settings` (or structured store context) with a safe generic fallback when settings are missing or malformed.
+- No Prestia-specific hardcoding in agent code; tenant/store data comes from input only.
+- Persian default and English mode via `AI_OUTPUT_LANGUAGE` and the shared language helper.
+- Reviewable, approval-required draft intent; no publish/send side effects.
+
+#### 8.2 Limit drafts to N per run
+
+- Deterministic max-drafts-per-run mechanism with MVP default of **3**.
+- Configurable via request override, `store.settings.content_agent.max_drafts_per_run`, environment variable, and documented defaults where applicable.
+- Defensive validation for missing, non-integer, or out-of-range values.
+- Code-level enforcement after LLM/mock output is parsed — not prompt-only.
+- Hard MVP upper bound (e.g. 5) to prevent runaway output.
+
+#### 8.3 Schema validation tests
+
+- `ContentSuggestions` and `ContentDraft` Pydantic schemas with strict validation.
+- Valid and invalid output tests using fixtures or mock dicts; no real LLM API keys required.
+- Only allowed action types: `content.instagram_draft`, `content.product_description`.
+- `requires_approval` must be `true` on content suggestions.
+- Draft limit applied before validation; invalid outputs rejected or handled per project conventions.
+
+#### 8.4 Content Agent runtime pipeline
+
+- Implement `run_content_analysis()` (or equivalent) as the main pipeline entry point.
+- Consume product context from Django client, coordinator-provided context, or validated request input.
+- Build prompts using Step 8.1; call `get_llm_provider()` / `MockProvider` for structured generation.
+- Parse, normalize, apply draft limit (Step 8.2), and schema-validate (Step 8.3) before return.
+- Handle empty or missing product data gracefully without hallucinating catalog facts.
+- No external publishing, sending, or side effects.
+
+#### 8.5 FastAPI `/run` endpoint
+
+- Add runnable `POST /run` on `content-agent`, aligned with the Sales Agent `/run` pattern where practical.
+- Request and response schemas wired to the runtime pipeline; response is schema-validated `ContentSuggestions`.
+- Preserve existing `/health` endpoint.
+- Deterministic endpoint tests (success, validation failure, empty context) without real LLM keys.
+
+#### 8.6 Content action mapping and approval persistence
+
+- Map validated `ContentDraft` items to Django-compatible action payloads.
+- Support only `content.instagram_draft` and `content.product_description`.
+- Ensure approval-required behavior (`pending_approval` / `requires_approval`) per action policy defaults.
+- Integrate with Django internal actions endpoint or existing `ActionService` creation pattern; no direct external publishing.
+- All side effects remain inside the Django action workflow (suggest → review → approve).
+
+#### 8.7 Phase 8 acceptance proof and example output
+
+- Deterministic tests with Prestia-style product fixtures or seeded Prestia catalog data.
+- Prove at least one Instagram caption is generated for a product fixture.
+- Prove Persian default output path and English mode with `AI_OUTPUT_LANGUAGE=en` end-to-end.
+- Prove approval-required action compatibility when drafts are mapped/persisted.
+- Add `docs/examples/content_output.json` validated against `ContentSuggestions`.
+- Document final validation commands for the full Content Agent test suite.
+
+**Dependencies:**
+
+- Phase 6 (shared language helper, Django client, schema validation, agent scaffold)
+- Phase 8.1–8.3 for Steps 8.4–8.7
+- Phase 4 action model and internal AI write APIs for action persistence behavior (Step 8.6)
+- May proceed in parallel with Phase 7 after Phase 6 completes
 
 **Acceptance criteria:**
 
-- Content agent produces ≥1 Instagram caption for a Prestia product
-- Output marked `approval_required` when persisted as actions
-- English output works when `AI_OUTPUT_LANGUAGE=en`
+- Content Agent produces at least one Instagram caption for a Prestia-style product fixture or seeded Prestia product.
+- Content Agent supports product description drafts.
+- Generated drafts are schema-validated (`ContentSuggestions`).
+- Generated drafts respect the configured max draft limit.
+- English output works when `AI_OUTPUT_LANGUAGE=en`.
+- Outputs are reviewable and approval-required when mapped/persisted as actions.
+- Only `content.instagram_draft` and `content.product_description` are accepted for content actions.
+- No real Instagram publishing or external side effects are introduced.
+- No Prestia-specific business logic is hardcoded in agent code.
+- Tests run with MockProvider/fixtures and do not require real LLM API keys.
+- `docs/examples/content_output.json` exists by the end of Step 8.7.
+
+**Non-goals:**
+
+- Real Instagram publishing
+- Competitor scraping
+- Website article generation
+- Support Agent logic
+- Coordinator/LangGraph orchestration
+- Frontend dashboard changes
+- Real external side effects
 
 ---
 

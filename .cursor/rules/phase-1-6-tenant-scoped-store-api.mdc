@@ -1,0 +1,108 @@
+---
+description: Phase 1.6 guardrail for tenant-scoped Store API acceptance only
+globs:
+  - "backend/stores/**"
+  - "backend/tenants/**"
+  - "backend/accounts/**"
+  - "backend/**/urls.py"
+  - "backend/**/settings*.py"
+  - "docs/phases/step-0.0.md"
+  - "docs/phases/step-1.6.md"
+alwaysApply: false
+---
+
+# Phase 1.6 — Tenant-Scoped Store API Acceptance
+
+This rule applies only when working on Phase 1.6.
+
+## Goal
+
+Add or complete a minimal tenant-scoped Store read API path and prove through HTTP-level tests that a user from one tenant cannot read another tenant's store by direct ID.
+
+## Required outcome
+
+The Phase 1 acceptance criterion must be proven at the HTTP/API layer:
+
+> API request as Prestia user cannot read another tenant's store ID.
+
+Queryset-only or middleware-only tests are not enough for this step.
+
+## Allowed work
+
+You may:
+
+* Inspect `docs/phases/step-0.0.md`, especially Phase 1.6.
+* Inspect existing `stores`, `tenants`, and `accounts` implementation.
+* Add or complete a minimal Store read endpoint if no suitable endpoint already exists.
+* Add a serializer only if needed for the minimal Store read API.
+* Add URL routing only as needed for the minimal endpoint.
+* Add HTTP/API tests proving same-tenant access and cross-tenant denial.
+* Use existing tenant-scoped manager/queryset methods such as `for_tenant`, `get_for_tenant`, `for_request`, or equivalent.
+* Use existing authentication/test utilities.
+* Create `docs/phases/step-1.6.md`.
+
+## Preferred implementation approach
+
+* Keep the endpoint minimal.
+* Prefer a read-only Store detail endpoint.
+* Do not introduce broad CRUD unless it already exists and only needs hardening.
+* Cross-tenant access by direct ID must return `404` or `403` according to the repository's existing convention.
+* Avoid leaking whether another tenant's store ID exists.
+* Use the existing custom user and tenant relationship.
+* In tests, using Django/DRF test authentication helpers such as `force_login` or `force_authenticate` is acceptable.
+* Do not implement the full Phase 2 login/JWT flow.
+
+## Required tests
+
+At minimum, add tests for:
+
+1. Same-tenant authenticated user can read their own tenant's store.
+2. Cross-tenant authenticated user cannot read another tenant's store by direct ID.
+3. Unauthenticated access behavior is explicit and tested if the endpoint is public-auth protected.
+4. Response payload does not expose unsafe tenant-crossing data.
+
+## Required verification
+
+At minimum, run:
+
+* Store API tests added in this step.
+* Existing tenant isolation tests.
+* Relevant `stores`, `tenants`, and `accounts` tests.
+* `python manage.py makemigrations --check --dry-run`.
+
+Use the repository's normal execution style. If Docker Compose is the normal workflow, run commands inside the backend container.
+
+## Strict boundaries
+
+Do not:
+
+* Implement Phase 1.7 `seed_prestia` baseline work.
+* Implement Phase 1.8 tenant scoping contract finalization.
+* Implement Phase 1.9 final verification.
+* Build full Phase 2 authentication, login, logout, JWT, or service JWT infrastructure.
+* Add write/update/delete Store APIs unless already present and only minor hardening is required.
+* Refactor tenant middleware unless there is a direct bug blocking the API acceptance test.
+* Refactor the tenant scoping manager unless there is a direct bug blocking the API acceptance test.
+* Modify frontend code.
+* Modify agent code.
+* Modify unrelated apps.
+* Make broad formatting changes.
+* Change existing migrations unless absolutely necessary and justified.
+
+## Documentation requirement
+
+Create `docs/phases/step-1.6.md` with:
+
+* Goal
+* Scope
+* Background / gap being closed
+* API path added or hardened
+* Tenant isolation behavior
+* Files changed
+* Tests added
+* Verification commands and results
+* Acceptance criteria checklist
+* Non-goals
+* Next step: Phase 1.7 — Phase 1 Seed Prestia Baseline Alignment
+
+The documentation must clearly state that Phase 1.6 only proves Store API tenant isolation and does not implement Phase 1.7, 1.8, or Phase 2 authentication.

@@ -1,0 +1,26 @@
+---
+description: Phase 8.1 — Content Agent brand voice prompt template rules
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "docs/phases/step-8.1.md"
+alwaysApply: false
+---
+
+# Phase 8.1 — Content Agent Brand Voice Prompt Rules
+
+When working on Phase 8.1, keep the scope limited to the Content Agent prompt template and brand voice injection.
+
+Rules:
+
+1. Do not hardcode Prestia-specific brand voice, category names, campaign angles, Instagram handles, or product assumptions in agent code.
+2. Brand voice must come from tenant/store data, preferably `store.settings`, and must have a safe generic fallback.
+3. The prompt template must support `AI_OUTPUT_LANGUAGE`, with Persian (`fa`) as the default behavior when configured.
+4. The Content Agent must stay generic and multi-tenant. Prestia may only appear in seed/demo data or tests, never as a business-rule branch.
+5. The prompt must produce reviewable drafts only. Do not publish, send, or execute external side effects.
+6. Generated content actions must be compatible with:
+   - `content.instagram_draft`
+   - `content.product_description`
+7. Do not implement Phase 8.2 draft-count limiting or Phase 8.3 schema-validation test expansion unless a small supporting interface is required for this step.
+8. Avoid logging full prompt bodies, product payloads, or generated content at INFO level.
+9. Update `docs/phases/step-8.1.md` with implementation notes, files changed, validation steps, and known limitations.

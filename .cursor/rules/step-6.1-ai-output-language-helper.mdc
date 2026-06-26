@@ -1,0 +1,115 @@
+---
+description: Step 6.1 rules for implementing the shared AI output language helper.
+globs:
+  - "agents/shared/**"
+  - ".env.example"
+  - "docs/phases/step-6.1.md"
+alwaysApply: false
+---
+
+# Step 6.1 — AI Output Language Helper Rules
+
+This rule applies only to Phase 6.1: implementing the shared `AI_OUTPUT_LANGUAGE` prompt prefix/helper.
+
+## Scope
+
+Implement a small shared language helper for AI agents.
+
+The helper must:
+
+* Live under `agents/shared/`, preferably `agents/shared/language.py`.
+* Read or accept `AI_OUTPUT_LANGUAGE`.
+* Default to Persian (`fa`).
+* Support at least:
+
+  * `fa`
+  * `en`
+* Produce reusable prompt/system-message instructions that agents can prepend or inject into prompts.
+* Be deterministic and easy to test.
+* Avoid importing provider SDKs such as OpenAI, Anthropic, LangChain, or LangGraph.
+* Avoid making network calls.
+* Avoid calling Django APIs.
+* Avoid any real LLM calls.
+
+## Required behavior
+
+The helper should expose functions similar to:
+
+* `normalize_output_language(value: str | None) -> str`
+* `get_output_language() -> str`
+* `get_language_instruction(language: str | None = None) -> str`
+* optionally `build_language_prompt_prefix(language: str | None = None) -> str`
+
+Expected behavior:
+
+* Missing or empty language config defaults to `fa`.
+* Persian instruction must clearly tell the model to answer in Persian.
+* English instruction must clearly tell the model to answer in English.
+* Unsupported language values must be handled consistently:
+
+  * either raise a clear `ValueError`
+  * or fall back to `fa` with a safe documented behavior.
+* Tests must define and lock the selected behavior.
+
+## Environment variables
+
+Ensure `.env.example` documents:
+
+```env
+AI_OUTPUT_LANGUAGE=fa
+```
+
+## Out of scope
+
+Do not implement later Phase 6 subtasks in this step.
+
+* Do not implement `LLMProvider`.
+* Do not implement `OpenAIProvider`, `AnthropicProvider`, or `MockProvider`.
+* Do not implement `DjangoClient`.
+* Do not implement agent I/O schemas.
+* Do not implement JSON schema validation.
+* Do not implement real FastAPI `/run` or workflow endpoints.
+* Do not implement coordinator daily-report endpoint.
+* Do not implement LangGraph.
+* Do not implement sales/content/support agent business logic.
+* Do not call external LLM providers.
+
+## Tests required
+
+Add focused tests for:
+
+* Default language is Persian.
+* `AI_OUTPUT_LANGUAGE=fa` returns Persian instruction.
+* `AI_OUTPUT_LANGUAGE=en` returns English instruction.
+* Empty value defaults to Persian.
+* Unsupported value follows the documented behavior.
+* Prompt prefix/helper output is stable and contains the expected language directive.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-6.1.md`
+
+The documentation must include:
+
+* Step title and goal
+* Why this helper exists
+* Files changed
+* Supported languages
+* Default behavior
+* Environment variable usage
+* Example usage from future agents
+* Tests added
+* Validation commands
+* What is intentionally deferred to later Phase 6 steps
+
+## Acceptance criteria
+
+* `agents/shared/language.py` or equivalent exists.
+* `AI_OUTPUT_LANGUAGE=fa` is documented in `.env.example`.
+* The helper defaults to Persian.
+* English output can be selected with `AI_OUTPUT_LANGUAGE=en`.
+* Tests cover the helper behavior.
+* No LLM provider, Django client, LangGraph, or real agent orchestration is implemented in this step.
+* `docs/phases/step-6.1.md` exists.

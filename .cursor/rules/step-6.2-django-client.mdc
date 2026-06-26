@@ -1,0 +1,162 @@
+---
+description: Step 6.2 rules for implementing the shared Django HTTP client for AI agents.
+globs:
+  - "agents/**"
+  - ".env.example"
+  - "docs/phases/step-6.2.md"
+alwaysApply: false
+---
+
+# Step 6.2 — Shared Django Client Rules
+
+This rule applies only to Phase 6.2: implementing the shared Django HTTP client with retry and correlation ID header.
+
+## Scope
+
+Implement a reusable HTTP client under `agents/shared/` that AI services will use to call Django internal APIs.
+
+The client must support:
+
+* Configurable Django base URL.
+* Service JWT forwarding through `Authorization: Bearer <token>`.
+* Correlation ID propagation through `X-Request-ID`.
+* Configurable timeout.
+* Limited retry behavior for safe transient failures.
+* Clear error classes or structured exceptions.
+* Deterministic unit tests.
+
+Recommended location:
+
+* `agents/shared/django_client.py`
+* or `agents/shared/django_client/client.py` if a package layout is preferred.
+
+## Required behavior
+
+The client should:
+
+* Read `DJANGO_INTERNAL_BASE_URL` from environment or accept it explicitly.
+* Accept a service JWT token at construction time or per request.
+* Add `Authorization: Bearer <token>` when a token is provided.
+* Add `X-Request-ID` when a correlation ID is provided.
+* Support basic HTTP methods needed by future agents:
+
+  * `get`
+  * `post`
+  * optionally `put` or `patch` if already needed by existing contracts.
+* Serialize JSON request bodies.
+* Parse JSON responses.
+* Raise a clear client exception for:
+
+  * connection errors
+  * timeout errors
+  * non-2xx responses
+  * invalid JSON when JSON is expected
+* Avoid logging raw response/request payloads.
+* Avoid direct database access.
+* Avoid Django imports.
+* Avoid LLM provider imports.
+
+## Retry policy
+
+Implement a small retry policy for transient failures only.
+
+Retry may apply to:
+
+* connection errors
+* timeout errors
+* HTTP 502
+* HTTP 503
+* HTTP 504
+
+Do not retry unsafe non-idempotent POST requests by default unless the implementation explicitly documents why it is safe. If retry for POST is supported, make it opt-in.
+
+Recommended defaults:
+
+* timeout: `30` seconds
+* max retries: `2`
+* backoff: small deterministic/exponential backoff
+
+Environment variables:
+
+```env
+DJANGO_INTERNAL_BASE_URL=http://backend:8000
+DJANGO_CLIENT_TIMEOUT_SECONDS=30
+DJANGO_CLIENT_MAX_RETRIES=2
+DJANGO_CLIENT_RETRY_BACKOFF_SECONDS=0.25
+```
+
+## Correlation ID
+
+The client must forward `X-Request-ID` when provided.
+
+Future coordinator and specialist agents will use this to tie logs across:
+
+* Django
+* Celery
+* coordinator-agent
+* sales-agent
+* content-agent
+* support-agent
+
+## Out of scope
+
+Do not implement later Phase 6 subtasks in this step.
+
+* Do not implement JSON schema validation.
+* Do not implement Pydantic agent I/O schemas.
+* Do not implement coordinator stub endpoint.
+* Do not implement FastAPI `/run` endpoints.
+* Do not implement `LLMProvider`.
+* Do not implement `OpenAIProvider`, `AnthropicProvider`, or `MockProvider`.
+* Do not implement LangGraph.
+* Do not implement sales/content/support agent logic.
+* Do not call real Django APIs in tests unless using a local mock HTTP server.
+* Do not make real external network calls.
+
+## Tests required
+
+Add focused tests for:
+
+* Base URL normalization.
+* Authorization header forwarding.
+* `X-Request-ID` forwarding.
+* JSON GET success.
+* JSON POST success.
+* Timeout handling.
+* Non-2xx response handling.
+* Retry behavior for transient GET failures.
+* No retry for POST by default, unless explicitly designed otherwise.
+* Invalid JSON handling if JSON parsing is part of the client.
+
+Use a mock HTTP server or request mocking library. Tests must not require the real Django backend container.
+
+## Documentation
+
+Cursor must create:
+
+`docs/phases/step-6.2.md`
+
+The documentation must include:
+
+* Step title and goal.
+* Why the shared Django client exists.
+* Client API.
+* Environment variables.
+* Auth/JWT forwarding behavior.
+* Correlation ID behavior.
+* Retry and timeout policy.
+* Error handling behavior.
+* Tests added.
+* Validation commands.
+* What is intentionally deferred to later Phase 6 steps.
+
+## Acceptance criteria
+
+* A shared Django client exists under `agents/shared/`.
+* Client forwards service JWT as `Authorization: Bearer ...`.
+* Client forwards `X-Request-ID`.
+* Client supports timeout and limited retry for transient failures.
+* Tests cover success, headers, retry, timeout, and error behavior.
+* `.env.example` documents required client variables.
+* `docs/phases/step-6.2.md` exists.
+* No LLM provider, schema validation, coordinator endpoint, LangGraph, or real agent business logic is implemented in this step.

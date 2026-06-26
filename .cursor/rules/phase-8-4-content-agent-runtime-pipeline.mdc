@@ -1,0 +1,33 @@
+---
+description: Phase 8.4 — Content Agent runtime pipeline
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "agents/content/tests/**/*.py"
+  - "docs/phases/step-8.4.md"
+alwaysApply: false
+---
+
+# Phase 8.4 — Content Agent Runtime Pipeline Rules
+
+This rule applies only to Step 8.4 of Phase 8.
+
+## Scope
+
+Implement the Content Agent runtime pipeline.
+
+## Rules
+
+1. Implement `run_content_analysis()` or an equivalent pipeline entry point.
+2. The pipeline must consume product context from validated input, coordinator-provided context, or Django client data according to existing project conventions.
+3. Use the prompt template and brand voice behavior from Step 8.1.
+4. Use `get_llm_provider()` / `MockProvider`; do not call provider SDKs directly.
+5. Parse, normalize, apply Step 8.2 draft limits, and validate with Step 8.3 schemas before returning.
+6. Handle empty or missing product data gracefully without hallucinating product facts.
+7. Do not implement FastAPI `POST /run`; that belongs to Step 8.5.
+8. Do not implement action persistence or Django `POST /internal/ai/actions/`; that belongs to Step 8.6.
+9. Do not create `docs/examples/content_output.json`; that belongs to Step 8.7.
+10. Do not add real Instagram publishing, external side effects, competitor scraping, website article generation, Support Agent logic, Coordinator/LangGraph orchestration, or frontend work.
+11. Keep the implementation generic and multi-tenant. Do not hardcode Prestia-specific behavior.
+12. Add focused deterministic tests using MockProvider or fixtures; no real LLM API keys.
+13. Update `docs/phases/step-8.4.md` with implementation details, validation commands, and deferred work.

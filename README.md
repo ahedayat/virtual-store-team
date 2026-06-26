@@ -136,15 +136,15 @@ Source of truth: `docker-compose.yml` in the repository root.
 |---------|----------------|---------------|-----------|----------------------|
 | `postgres` | Primary database | 5432 | — | Compose: `pg_isready` |
 | `redis` | Celery broker / cache | 6379 | — | Compose: `redis-cli ping` |
-| `backend` | Django REST API | 8000 | **8000** | `GET /health/` |
-| `celery-worker` | Celery task worker | — | — | No HTTP endpoint; check logs |
-| `celery-beat` | Celery scheduler | — | — | No HTTP endpoint; check logs |
-| `frontend` | Next.js dashboard | 3000 | **3000** | `GET /` (placeholder page) |
-| `coordinator-agent` | Report orchestration stub | 8100 | **8100** | `GET /health` |
-| `sales-agent` | Sales analysis | 8101 | **8101** | `GET /health` |
-| `content-agent` | Content drafts | 8102 | **8102** | `GET /health` |
-| `support-agent` | Support analysis | 8103 | **8103** | `GET /health` |
-| `nginx` | Reverse proxy (preferred entrypoint) | 80 | **80** | `GET /` (frontend), `GET /api/health/` (backend health) |
+| `backend` | Django REST API | 8000 | **8000** | Compose: `GET /health/`; host: `curl localhost:8000/health/` |
+| `celery-worker` | Celery task worker | — | — | Compose: `celery inspect ping`; logs |
+| `celery-beat` | Celery scheduler | — | — | No Compose healthcheck; check logs |
+| `frontend` | Next.js dashboard | 3000 | **3000** | Compose: `GET /`; host: `curl localhost:3000/` |
+| `coordinator-agent` | Report orchestration stub | 8100 | **8100** | Compose: `GET /health` |
+| `sales-agent` | Sales analysis | 8101 | **8101** | Compose: `GET /health` |
+| `content-agent` | Content drafts | 8102 | **8102** | Compose: `GET /health` |
+| `support-agent` | Support analysis | 8103 | **8103** | Compose: `GET /health` |
+| `nginx` | Reverse proxy (preferred entrypoint) | 80 | **80** | Compose: `GET /`; host: `curl localhost/`, `curl localhost/api/health/` |
 
 Postgres and Redis are reachable only inside the `app-network` Docker network. **Use nginx on port 80** for the frontend and API in normal development. Application services also publish direct host ports (8000, 3000, 8100–8103) for debugging.
 
@@ -185,22 +185,45 @@ curl -s http://localhost:8103/health
 # Expected per agent: {"status":"ok","service":"<agent-name>"}
 ```
 
-### Infrastructure healthchecks
+### Docker Compose healthchecks (Phase 0.8)
 
-Only **Postgres** and **Redis** have Docker Compose `healthcheck` directives today. The backend waits for both to be healthy before starting.
+After `docker compose up`, check service health:
 
-**Full application healthchecks** (backend, frontend, agents, Celery) and `depends_on: condition: service_healthy` for app services are planned for **Phase 0.8**.
+```bash
+docker compose ps
+```
+
+Healthy application and infrastructure services show `(healthy)` in the STATUS column. Allow **60–90 seconds** on first boot for migrations and Next.js dev compile.
+
+| Service | Compose probe |
+|---------|---------------|
+| `postgres` | `pg_isready` |
+| `redis` | `redis-cli ping` |
+| `backend` | `GET http://localhost:8000/health/` (Python `urllib`) |
+| `frontend` | `GET http://localhost:3000/` (Node `fetch`) |
+| `coordinator-agent` | `GET http://localhost:8100/health` |
+| `sales-agent` | `GET http://localhost:8101/health` |
+| `content-agent` | `GET http://localhost:8102/health` |
+| `support-agent` | `GET http://localhost:8103/health` |
+| `celery-worker` | `celery -A config inspect ping -d worker@celery-worker` |
+| `nginx` | `wget --spider` to `http://127.0.0.1/` |
+
+Inspect detailed health state for a container:
+
+```bash
+docker inspect --format='{{json .State.Health}}' <container_name>
+```
+
+**`celery-beat`** has no Compose healthcheck (no reliable Celery-native probe). Verify with logs instead.
 
 ### Celery
-
-There is no HTTP health URL for Celery. Verify the worker is running:
 
 ```bash
 docker compose logs -f celery-worker
 docker compose logs -f celery-beat
 ```
 
-Look for a successful worker/beat startup without repeated crash loops.
+Look for a successful worker/beat startup without repeated crash loops. The worker is healthy when `celery inspect ping` succeeds inside the container.
 
 ---
 
@@ -217,7 +240,12 @@ docker compose logs -f
 docker compose logs -f backend
 docker compose logs -f frontend
 docker compose logs -f nginx
+docker compose logs -f coordinator-agent
+docker compose logs -f sales-agent
+docker compose logs -f content-agent
+docker compose logs -f support-agent
 docker compose logs -f celery-worker
+docker compose logs -f celery-beat
 
 # Rebuild without cache
 docker compose build --no-cache
@@ -293,11 +321,16 @@ docker compose up
 
 **Fix:** Inspect logs for broker connection errors (`REDIS_URL` / `CELERY_BROKER_URL` should use `redis://redis:6379/0` inside Compose). Ensure `redis` is healthy and backend image includes Celery configuration.
 
+### Unhealthy application services
+
+**Symptom:** `backend`, `frontend`, or an agent shows `unhealthy` in `docker compose ps` after several minutes.
+
+**Fix:** Check logs for the service (`docker compose logs -f <service>`). Backend may still be migrating — wait for `start_period` (60s). Agents with `ModuleNotFoundError` need **Phase 0.9** build context fixes, not healthcheck changes.
+
 ### Issues planned for later Phase 0 steps
 
 | Need | Phase |
 |------|-------|
-| `docker compose ps` shows app services `healthy` | **0.8** — application healthchecks |
 | Agent `ModuleNotFoundError` at startup | **0.9** — Docker build context alignment |
 | Hot reload via bind mounts | **0.10** — dev override |
 | Final stack sign-off checklist | **0.11** — verification |
@@ -314,13 +347,13 @@ docker compose up
 | **0.4** | Complete | Docker Compose and `.env.example` wiring |
 | **0.5** | Complete | Initial full-stack Docker verification |
 | **0.6** | Complete | Root README and developer onboarding |
-| **0.7** | **This step** | nginx reverse proxy on port 80 |
-| **0.8** | Planned | Application healthchecks in Compose |
+| **0.7** | Complete | nginx reverse proxy on port 80 |
+| **0.8** | Complete | Application healthchecks in Compose |
 | **0.9** | Planned | Agent Docker build context alignment |
 | **0.10** | Planned | Dev bind mounts and hot reload |
 | **0.11** | Planned | Final Phase 0 verification and sign-off |
 
-**Phase 0 is not complete** until steps **0.7–0.11** are done and documented in `docs/phases/step-0.11.md`.
+**Phase 0 is not complete** until steps **0.9–0.11** are done and documented in `docs/phases/step-0.11.md`.
 
 ---
 
@@ -335,7 +368,8 @@ docker compose up
 | [docs/phases/step-0.4.md](docs/phases/step-0.4.md) | Docker Compose and environment wiring |
 | [docs/phases/step-0.5.md](docs/phases/step-0.5.md) | Initial full-stack verification |
 | [docs/phases/step-0.6.md](docs/phases/step-0.6.md) | Root README and developer onboarding |
-| [docs/phases/step-0.7.md](docs/phases/step-0.7.md) | nginx reverse proxy foundation (this step) |
+| [docs/phases/step-0.7.md](docs/phases/step-0.7.md) | nginx reverse proxy foundation |
+| [docs/phases/step-0.8.md](docs/phases/step-0.8.md) | Application healthchecks (this step) |
 
 ---
 

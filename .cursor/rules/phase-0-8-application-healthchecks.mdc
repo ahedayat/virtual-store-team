@@ -1,0 +1,88 @@
+---
+description: Phase 0.8 Docker Compose application healthcheck rules
+globs:
+  - "docker-compose.yml"
+  - "backend/**"
+  - "frontend/**"
+  - "agents/**"
+  - "README.md"
+  - "docs/phases/step-0.8.md"
+  - ".cursor/rules/phase-0-8-application-healthchecks.mdc"
+alwaysApply: false
+---
+
+# Phase 0.8 — Application Healthchecks Rules
+
+This rule applies only to Phase 0.8.
+
+## Scope
+
+Phase 0.8 adds reliable Docker Compose healthchecks for application services and updates service dependencies where appropriate.
+
+Primary services in scope:
+
+* `backend`
+* `frontend`
+* `coordinator-agent`
+* `sales-agent`
+* `content-agent`
+* `support-agent`
+* `celery-worker`, if present in the Phase 0 stack
+* `celery-beat`, if a reliable healthcheck is practical
+* `nginx`, only if it is already present and a simple local healthcheck is useful
+
+## Allowed changes
+
+Allowed files to create or update:
+
+* `docker-compose.yml`
+* `README.md`, only if healthcheck-related documentation needs to be updated
+* `docs/phases/step-0.8.md`
+* `.cursor/rules/phase-0-8-application-healthchecks.mdc`
+
+Minimal Dockerfile or dependency changes are allowed only if a healthcheck cannot work without a tiny required runtime tool. Prefer healthcheck commands that use already available runtimes, such as Python or Node, instead of installing extra packages.
+
+## Healthcheck expectations
+
+Use healthcheck commands that run inside each container and check the service on localhost.
+
+Recommended patterns:
+
+* Django backend: check `http://localhost:8000/health/`
+* FastAPI agents: check `http://localhost:<agent_port>/health`
+* Next.js frontend: check `http://localhost:3000/`
+* nginx, if included: check `http://localhost/` or a simple proxied health route
+* Celery worker: prefer `celery inspect ping` or another reliable Celery-native check
+* Celery beat: only add a healthcheck if it can be made reliable without fragile process hacks
+
+## Constraints
+
+Do not add nginx reverse proxy behavior in this phase. That belongs to Phase 0.7 and should already be done.
+
+Do not change agent Docker build contexts in this phase. Agent Docker context alignment belongs to Phase 0.9.
+
+Do not add development bind mounts or hot reload configuration in this phase. Dev bind mounts belong to Phase 0.10.
+
+Do not perform final Phase 0 sign-off in this phase. Final verification belongs to Phase 0.11.
+
+Do not add real application features, business logic, agent behavior, authentication changes, or tenant logic.
+
+Do not hardcode Prestia-specific behavior.
+
+Do not make fragile dependency chains. Use `depends_on.condition: service_healthy` only where it improves startup reliability and does not block unrelated services unnecessarily.
+
+## Documentation expectations
+
+`docs/phases/step-0.8.md` must document:
+
+* Goal
+* Scope
+* Files created or updated
+* Healthchecks added per service
+* Any `depends_on` condition changes
+* Validation commands
+* Expected results
+* Known limitations
+* What was intentionally left for Phase 0.9, 0.10, and 0.11
+
+Phase 0.8 does not close Phase 0 by itself.

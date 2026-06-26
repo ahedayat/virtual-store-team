@@ -1501,19 +1501,23 @@ docker compose exec celery-worker celery -A config inspect registered | grep -E 
 
 **Goal:** Shared agent library and working FastAPI containers with mock LLM.
 
+**Status:** Complete (verified in Step 6.9)
+
 **Deliverables:**
 
 - `agents/shared/`: `llm/`, `django_client/`, `schemas/`, `language.py`
 - Each agent: FastAPI app, settings, `/health`, `/run` or workflow endpoint
-- `MockProvider` returning deterministic JSON
+- `MockProvider` returning deterministic JSON for sales, content, and support scaffold shapes
 - Docker compose integration with env vars
+- Direct unit tests proving the shared LLM abstraction (`LLMProvider`, `get_llm_provider()`, `MockProvider`)
+- Cross-agent scaffold verification across all four agents
 
 **Tasks:**
 
 1. Implement LLM provider protocol and factory
 2. Django HTTP client with JWT forwarding
 3. Pydantic schemas for agent I/O
-4. Wire all four agents to echo mock responses
+4. Wire all four agents to return structured mock responses where applicable
 
 **Subtasks:**
 
@@ -1521,6 +1525,28 @@ docker compose exec celery-worker celery -A config inspect registered | grep -E 
 - 6.2 `DjangoClient` with retry and correlation ID header
 - 6.3 JSON schema validation on agent responses
 - 6.4 Coordinator stub endpoint accepting report job
+- 6.5 Phase 6 plan reconciliation and LLM scaffold traceability
+- 6.6 Support agent mock `/run` scaffold
+- 6.7 Sales agent mock provider default wiring
+- 6.8 Agent scaffold verification across all four agents
+- 6.9 Phase 6 closure and final verification
+
+**Subphase notes:**
+
+| Step | Focus |
+|------|-------|
+| 6.5 | Document `agents/shared/llm/` as a Phase 6 deliverable; add direct LLM abstraction unit tests |
+| 6.6 | Minimal `POST /run` on `support-agent` with deterministic structured mock output |
+| 6.7 | Default non-empty sales `/run` paths to `get_llm_provider()` when `LLM_PROVIDER=mock` |
+| 6.8 | Lightweight verification matrix for coordinator, sales, content, and support scaffolds |
+| 6.9 | Final test run, closure document, and Phase 6 completion decision |
+
+**Scope boundary:**
+
+- Phase 6 is the **shared agent scaffold** only: health endpoints, mock LLM wiring, shared libraries, and deterministic structured mock output.
+- `agents/shared/llm/` is part of the Phase 6 shared scaffold.
+- `LLM_PROVIDER=mock` must work without external API keys.
+- Later business implementation (full sales analysis, content generation, support automation, LangGraph orchestration) belongs to Phases 7–10 and must not be mixed into Phase 6.
 
 **Dependencies:** Phase 5
 
@@ -1528,7 +1554,12 @@ docker compose exec celery-worker celery -A config inspect registered | grep -E 
 
 - Each agent container starts and responds to `/health`
 - Setting `LLM_PROVIDER=mock` produces structured output without API key
-- Agent can call Django internal API with service JWT
+- All four agents expose enough scaffold behavior to return structured mock output where applicable
+- Agent can call Django internal API with service JWT (via shared `DjangoClient`)
+- Shared LLM abstraction has direct unit tests
+- Phase 6 closure document (`docs/phases/step-6.9.md`) confirms completion
+
+**Documentation:** `docs/phases/step-6.1.md` through `docs/phases/step-6.9.md`
 
 ---
 

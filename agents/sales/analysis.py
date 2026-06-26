@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from agents.sales.empty_sales import handle_empty_sales
+from agents.sales.empty_sales import extract_sales_summary, handle_empty_sales
 from agents.sales.prompts import build_sales_analysis_messages
 from agents.sales.validation import (
     SalesLLMOutputError,
@@ -14,6 +14,7 @@ from agents.sales.validation import (
     log_sales_validation_failure,
     parse_llm_json_output,
 )
+from agents.shared.llm import get_llm_provider
 from agents.shared.schemas.errors import AgentSchemaValidationError
 from agents.shared.schemas.sales import SalesAnalysisResult
 
@@ -21,8 +22,8 @@ from agents.shared.schemas.sales import SalesAnalysisResult
 class LLMProvider(Protocol):
     """Minimal protocol for future LLM integration in the Sales Agent."""
 
-    def complete(self, messages: list[dict[str, str]], /) -> str:
-        """Return structured model output as a JSON string."""
+    def complete(self, messages: list[dict[str, str]], /) -> str | dict[str, Any]:
+        """Return structured model output as a JSON string or parsed object."""
 
 
 def _serialize_sales_context(sales_data: Mapping[str, Any]) -> str:
@@ -65,7 +66,10 @@ def run_sales_analysis(
     request_id: str | None = None,
 ) -> SalesAnalysisResult:
     """Run sales analysis and validate the final output before return."""
-    sales_data = sales_summary if sales_summary is not None else context
+    raw_sales_data = sales_summary if sales_summary is not None else context
+    sales_data = (
+        extract_sales_summary(raw_sales_data) if raw_sales_data is not None else None
+    )
 
     empty_result = handle_empty_sales(
         sales_data=sales_data,
@@ -82,10 +86,7 @@ def run_sales_analysis(
         )
 
     if llm_provider is None:
-        raise NotImplementedError(
-            "Non-empty sales analysis requires an LLM provider. "
-            "Provide sales data with completed orders or wait for a later Phase 7 step."
-        )
+        llm_provider = get_llm_provider()
 
     return _run_llm_sales_analysis(
         sales_data=sales_data,

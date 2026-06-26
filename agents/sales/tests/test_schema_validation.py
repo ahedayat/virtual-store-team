@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from typing import Any
 from unittest.mock import patch
@@ -194,6 +195,17 @@ class SalesSchemaValidationTests(unittest.TestCase):
         self.assertIsInstance(result, SalesAnalysisResult)
         self.assertEqual(result.recommendations, [])
 
+    def test_run_sales_analysis_uses_default_mock_provider(self) -> None:
+        with patch.dict(os.environ, {"LLM_PROVIDER": "mock", "OPENAI_API_KEY": ""}, clear=False):
+            result = run_sales_analysis(
+                context=NON_EMPTY_CONTEXT,
+                report_run_id="run-default-mock-1",
+                output_language="en",
+            )
+
+        self.assertEqual(result.metadata.agent_name, "sales-agent")
+        self.assertGreaterEqual(len(result.recommendations), 1)
+
     def test_run_sales_analysis_validates_mock_llm_output(self) -> None:
         provider = _JsonMockLLMProvider(build_valid_sales_analysis_payload())
 
@@ -291,7 +303,24 @@ class SalesRunEndpointValidationTests(unittest.TestCase):
         self.assertEqual(body["recommendations"], [])
         self.assertEqual(body["summary"], "No sales were recorded for this period.")
 
-    def test_run_endpoint_returns_501_for_non_empty_without_llm(self) -> None:
+    @patch.dict(os.environ, {"LLM_PROVIDER": "mock", "OPENAI_API_KEY": ""}, clear=False)
+    def test_run_endpoint_returns_mock_output_for_non_empty_sales(self) -> None:
+        response = self.client.post(
+            "/run",
+            json={
+                "context": NON_EMPTY_CONTEXT,
+                "report_run_id": "run-non-empty-1",
+                "output_language": "en",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["metadata"]["agent_name"], "sales-agent")
+        self.assertGreaterEqual(len(body["recommendations"]), 1)
+
+    @patch.dict(os.environ, {"LLM_PROVIDER": "openai"}, clear=False)
+    def test_run_endpoint_returns_501_for_unimplemented_provider(self) -> None:
         response = self.client.post(
             "/run",
             json={
@@ -304,6 +333,7 @@ class SalesRunEndpointValidationTests(unittest.TestCase):
         detail = response.json()["detail"]
         self.assertEqual(detail["code"], "not_implemented")
 
+    @patch.dict(os.environ, {"LLM_PROVIDER": "mock"}, clear=False)
     def test_run_endpoint_does_not_expose_stack_traces(self) -> None:
         response = self.client.post(
             "/run",

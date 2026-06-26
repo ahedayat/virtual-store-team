@@ -133,17 +133,17 @@ class LimitContentSuggestionsTests(unittest.TestCase):
             request_max_drafts=2,
         )
 
-        self.assertEqual(len(normalized["drafts"]), 2)
+        self.assertEqual(len(normalized.drafts), 2)
 
     def test_draft_action_types_remain_approval_compatible(self) -> None:
         normalized = normalize_content_agent_output(_build_content_result(4), request_max_drafts=2)
 
-        for draft in normalized["drafts"]:
+        for draft in normalized.drafts:
             self.assertIn(
-                draft["action_type"],
+                draft.action_type,
                 ("content.instagram_draft", "content.product_description"),
             )
-            self.assertIn("draft_text", draft)
+            self.assertTrue(draft.draft_text)
 
 
 class ContentDraftPromptLimitTests(unittest.TestCase):

@@ -1,8 +1,7 @@
-"""Content Agent result normalization with deterministic draft limiting."""
+"""Content Agent result normalization with draft limiting and schema validation."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -10,32 +9,19 @@ from agents.content.draft_limit import (
     limit_content_suggestions,
     resolve_max_drafts_per_run,
 )
+from agents.content.validation import (
+    ContentLLMOutputError,
+    ensure_valid_content_suggestions,
+    parse_llm_json_output,
+)
+from agents.shared.schemas.content import ContentSuggestions
 
-
-class ContentLLMOutputError(Exception):
-    """Raised when Content Agent LLM output cannot be parsed as structured JSON."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-
-def parse_llm_json_output(raw_output: str | Mapping[str, Any]) -> dict[str, Any]:
-    """Parse LLM output from a JSON string or a mock-provider dict."""
-    if isinstance(raw_output, Mapping):
-        return dict(raw_output)
-
-    if not isinstance(raw_output, str):
-        raise ContentLLMOutputError("LLM output must be a JSON string or object.")
-
-    try:
-        parsed = json.loads(raw_output)
-    except json.JSONDecodeError:
-        raise ContentLLMOutputError("LLM returned malformed JSON.") from None
-
-    if not isinstance(parsed, dict):
-        raise ContentLLMOutputError("LLM JSON output must be a JSON object.")
-
-    return parsed
+__all__ = [
+    "ContentLLMOutputError",
+    "apply_content_draft_limit",
+    "normalize_content_agent_output",
+    "parse_llm_json_output",
+]
 
 
 def apply_content_draft_limit(
@@ -45,7 +31,7 @@ def apply_content_draft_limit(
     store_settings: Mapping[str, Any] | None = None,
     env_max_drafts: str | None | object = None,
 ) -> dict[str, Any]:
-    """Resolve the draft limit and trim suggestions before returning output."""
+    """Resolve the draft limit and trim suggestions before schema validation."""
     kwargs: dict[str, Any] = {
         "request_max_drafts": request_max_drafts,
         "store_settings": store_settings,
@@ -63,12 +49,13 @@ def normalize_content_agent_output(
     request_max_drafts: Any = None,
     store_settings: Mapping[str, Any] | None = None,
     env_max_drafts: str | None | object = None,
-) -> dict[str, Any]:
-    """Parse LLM/mock output and enforce the resolved draft limit in code."""
+) -> ContentSuggestions:
+    """Parse LLM/mock output, enforce the draft limit, and validate the schema."""
     parsed = parse_llm_json_output(raw_output)
-    return apply_content_draft_limit(
+    limited = apply_content_draft_limit(
         parsed,
         request_max_drafts=request_max_drafts,
         store_settings=store_settings,
         env_max_drafts=env_max_drafts,
     )
+    return ensure_valid_content_suggestions(limited)

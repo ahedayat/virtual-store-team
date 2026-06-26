@@ -1,0 +1,43 @@
+---
+description: Phase 8.3 — Content Agent schema validation tests
+globs:
+  - "agents/content/**/*.py"
+  - "agents/shared/**/*.py"
+  - "tests/**/*.py"
+  - "docs/phases/step-8.3.md"
+alwaysApply: false
+---
+
+# Phase 8.3 — Content Agent Schema Validation Rules
+
+This rule applies only to Step 8.3 of Phase 8.
+
+## Scope
+
+Implement focused schema validation tests for the Content Agent.
+
+Recommended locations:
+
+* `agents/shared/schemas/content.py` — `ContentDraft`, `ContentSuggestions`
+* `agents/content/validation.py` — parse LLM JSON, validate output, safe logging
+* `agents/content/analysis.py` — `normalize_content_agent_output()` validation gate
+* `agents/content/tests/test_schema_validation.py`
+
+Reuse Step 6.3 `validate_agent_response` and Step 8.2 draft limiting before validation.
+
+## Rules
+
+1. Validate Content Agent outputs with explicit Pydantic/schema models before returning results or mapping them to actions.
+2. Tests must cover both valid and invalid Content Agent outputs.
+3. Do not rely on real LLM API keys. Use MockProvider, fixtures, or deterministic payloads.
+4. Content suggestions must be compatible with these action types only:
+   - `content.instagram_draft`
+   - `content.product_description`
+5. Content actions must remain reviewable and approval-required in intent.
+6. Invalid action types, missing draft text, missing product references where required, invalid priority values, malformed payloads, and non-list suggestion containers must be rejected or normalized according to existing project conventions.
+7. Preserve Step 8.1 brand voice behavior and Step 8.2 max draft limit behavior.
+8. Add tests proving the draft limit is still respected after schema parsing/validation.
+9. Do not implement real Instagram publishing, real external side effects, competitor scraping, website article generation, coordinator orchestration, or support-agent logic in this step.
+10. Keep the Content Agent generic and multi-tenant. Do not hardcode Prestia-specific behavior.
+11. Avoid logging full generated content, prompt bodies, product payloads, or PII-like data at INFO level.
+12. Update `docs/phases/step-8.3.md` with schema behavior, test coverage, validation commands, and known limitations.

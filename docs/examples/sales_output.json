@@ -1,0 +1,43 @@
+{
+  "metadata": {
+    "agent_name": "sales-agent",
+    "report_run_id": "00000000-0000-4000-8000-0000000000a1"
+  },
+  "summary": "Seven-day sales show steady demand on two core SKUs. Inventory is trending low on the top seller, and one slow mover may benefit from a limited promotional discount.",
+  "insights": [
+    "SKU-DEMO-001 accounts for 42% of weekly revenue.",
+    "Order volume increased 12% versus the prior seven-day period.",
+    "SKU-DEMO-014 has elevated stock with no sales in the last fourteen days."
+  ],
+  "recommendations": [
+    {
+      "priority": 2,
+      "action_type": "sales.restock",
+      "title": "Restock: SKU-DEMO-001",
+      "description": "Reorder the top-selling SKU before projected stockout.",
+      "rationale": "On-hand units are below the seven-day sales velocity threshold. Restocking reduces lost-revenue risk using aggregate sales signals only.",
+      "payload": {
+        "product_id": "00000000-0000-4000-8000-000000000001",
+        "sku": "SKU-DEMO-001",
+        "current_stock": 3,
+        "suggested_order_qty": 24,
+        "days_of_cover": 2
+      }
+    },
+    {
+      "priority": 4,
+      "action_type": "sales.discount",
+      "title": "Consider discount: SKU-DEMO-014",
+      "description": "A modest promotional discount may accelerate clearance of slow-moving inventory.",
+      "rationale": "No recent sales despite available stock. A controlled discount is lower urgency than the restock need on the top SKU.",
+      "payload": {
+        "product_id": "00000000-0000-4000-8000-000000000014",
+        "sku": "SKU-DEMO-014",
+        "current_stock": 47,
+        "suggested_discount_percent": 10,
+        "promotion_duration_days": 7
+      }
+    }
+  ],
+  "warnings": []
+}

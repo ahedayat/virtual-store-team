@@ -1,0 +1,164 @@
+---
+description: Step 7.4 — Document Sales Agent example output
+globs:
+  - "docs/examples/sales_output.json"
+  - "docs/phases/step-7.4.md"
+  - "agents/sales/**/*.py"
+  - "agents/shared/schemas/**/*.py"
+  - "tests/**/*.py"
+alwaysApply: false
+---
+
+# Step 7.4 — Sales Agent Example Output Documentation
+
+This rule applies only to Step 7.4 of Phase 7.
+
+## Scope
+
+Create and validate a documented example output for the Sales Agent.
+
+This step is documentation/contract-focused. Do not implement new Sales Agent business logic unless a very small change is required to keep the example aligned with the existing schema.
+
+Recommended locations:
+
+* `docs/examples/sales_output.json` — canonical example output
+* `docs/phases/step-7.4.md` — step documentation
+* `agents/sales/tests/test_sales_output_example.py` (or equivalent) — schema validation test for the example file
+* `agents/shared/schemas/sales.py` — existing `SalesAnalysisResult` and `SalesRecommendation` schemas
+* `agents/shared/schemas/validation.py` — existing `validate_agent_response` from Step 6.3
+
+Reuse existing modules:
+
+* Step 6.3 `validate_agent_response` and `AgentSchemaValidationError`
+* Step 7.1 prompt/rubric contract for recommendation field semantics
+* Step 7.2 empty-sales fallback shape (example may differ; it should represent a realistic non-empty analysis)
+* Step 7.3 validation gate (example must pass the same schema the runtime uses)
+
+## Required output file
+
+Create:
+
+`docs/examples/sales_output.json`
+
+The file must contain a realistic, schema-valid Sales Agent output example.
+
+## Requirements
+
+- The example must validate against the existing `SalesAnalysisResult` schema or equivalent Sales Agent output schema.
+- The example must include at least one recommendation.
+- At least one recommendation should use either:
+  - `sales.restock`
+  - or `sales.discount`
+- Every recommendation must include:
+  - `priority`
+  - `action_type`
+  - `title`
+  - `description`
+  - `rationale`
+  - `payload`
+- Priority must be an integer from 1 to 5.
+- Allowed action types: `sales.restock`, `sales.discount`, `sales.follow_up`.
+- The example must include required `SalesAnalysisResult` envelope fields (`metadata`, `summary`, etc.) per `BaseAgentResponse` and `agents/shared/schemas/sales.py`.
+- Schemas use strict validation (`extra="forbid"`) per Step 6.3. Unknown fields at any level must not appear in the example.
+- The example must not include raw PII.
+- The example must not include customer phone numbers, emails, addresses, payment data, full names, or raw external platform IDs.
+- The example must not claim that actions have already been executed.
+- The example should be generic and tenant-scoped.
+- Do not hardcode Prestia-specific logic in code. The example may use neutral demo product names or generic product references.
+- Use placeholder UUIDs or generic SKU identifiers only; do not use real customer or store identifiers.
+
+### Valid recommendation example
+
+```json
+{
+  "priority": 2,
+  "action_type": "sales.restock",
+  "title": "Restock: Demo SKU",
+  "description": "Short manager-facing summary.",
+  "rationale": "Low stock with recent sales velocity (non-PII).",
+  "payload": {
+    "product_id": "00000000-0000-4000-8000-000000000001",
+    "sku": "SKU-DEMO-001",
+    "current_stock": 2,
+    "suggested_order_qty": 20
+  }
+}
+```
+
+## Testing expectations
+
+Add or update a focused test that loads:
+
+`docs/examples/sales_output.json`
+
+and validates it against the Sales Agent output schema using `validate_agent_response(..., SalesAnalysisResult)`.
+
+The test must fail if the example becomes stale or schema-incompatible.
+
+Tests should cover:
+
+- example file loads and parses as JSON;
+- example validates against `SalesAnalysisResult`;
+- at least one recommendation is present;
+- at least one recommendation uses `sales.restock` or `sales.discount`;
+- no extra unknown fields (implicit via strict schema validation).
+
+Tests must not call real LLM providers or Django APIs.
+
+## Documentation
+
+Create:
+
+`docs/phases/step-7.4.md`
+
+The documentation must explain:
+
+- purpose of the example output;
+- file path;
+- schema compatibility;
+- recommendation fields;
+- action type examples;
+- PII-safety rules;
+- how to validate the example;
+- what was intentionally not implemented in this step.
+
+The documentation should also include:
+
+* Step title and goal
+* Files changed
+* Schema references (`SalesAnalysisResult`, `SalesRecommendation`, `validate_agent_response`)
+* Example validation test location
+* Validation commands
+* Integration with Steps 7.1–7.3
+
+## Architecture constraints
+
+- No direct database access from agents.
+- Use only sanitized, generic demo data in the example.
+- Use the shared schema package (`agents/shared/schemas/`).
+- Do not hardcode Prestia-specific behavior.
+- Do not execute actions directly.
+- Do not add new sales analysis heuristics in this step.
+
+## Out of scope
+
+Do not implement:
+
+- Content Agent behavior;
+- Support Agent behavior;
+- Coordinator orchestration;
+- Django action persistence changes;
+- real external action execution;
+- new sales analysis heuristics beyond what already exists;
+- `docs/examples/content_output.json`;
+- `docs/examples/support_output.json`.
+
+## Acceptance criteria
+
+* `docs/examples/sales_output.json` exists and is schema-valid.
+* Example includes at least one recommendation with `sales.restock` or `sales.discount`.
+* All recommendations include required fields with priority 1–5.
+* Example contains no PII or claims of executed actions.
+* Focused test loads and validates the example file against `SalesAnalysisResult`.
+* `docs/phases/step-7.4.md` exists.
+* No new Sales Agent business logic beyond minimal alignment fixes.

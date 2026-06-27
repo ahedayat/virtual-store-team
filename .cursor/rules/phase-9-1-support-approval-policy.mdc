@@ -1,0 +1,117 @@
+---
+description: Phase 9.1 — Support Agent approval policy table (auto vs approval)
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/**/*.py"
+  - "docs/phases/step-9.1.md"
+alwaysApply: false
+---
+
+# Phase 9.1 — Support Agent Approval Policy Table
+
+This rule applies when working on Phase 9.1 / Support Agent approval classification.
+
+## Scope
+
+Step 9.1 is limited to defining and testing the policy table for **auto-executable** vs **approval-required** support behavior.
+
+Recommended locations:
+
+* `agents/support/` — policy table data, classification helpers, focused tests
+* `agents/shared/` — only if a minimal shared helper is required for policy classification
+* `docs/phases/step-9.1.md` — step documentation
+
+## Rules
+
+1. Implement the approval policy as **code-level data/configuration and helper logic**. Do not rely only on prompt text.
+2. The policy must be **deterministic and testable without real LLM API keys**.
+3. All support outputs must remain **reviewable drafts or classification metadata only**.
+4. Do not add real external side effects such as sending Instagram DMs, refunds, order changes, publishing, or customer contact.
+
+### Approval-required cases
+
+The following must always classify as **approval-required**:
+
+* Refund requests
+* Cancellation
+* Order disputes
+* Payment issues
+* Address changes
+* Angry or escalated tone
+* Legal threats
+* Health or safety claims
+* Private account data
+* Any request requiring account or order mutation
+
+### Auto-executable low-risk cases
+
+Generic FAQ-style replies may be classified as **auto-executable** only if they do **not** include:
+
+* PII
+* Order-specific facts
+* Refund or payment promises
+* Policy exceptions
+* External side effects
+
+Generic FAQ examples include:
+
+* Store hours
+* Shipping policy explanation
+* Return policy explanation **without approving a return**
+* Product availability wording based only on provided sanitized context
+* Polite clarification questions
+
+### Data and tenancy
+
+* No raw PII may be logged, included in test snapshots, or added to example fixtures.
+* Tenant and store data must remain generic. Do not hardcode Prestia-specific business rules.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Phase 9.2** — refusal behavior for out-of-scope requests
+* **Phase 9.3** — unsafe prompt injection tests
+* The full Support Agent runtime pipeline, unless a **minimal helper** is required to test the policy table
+
+Also out of scope unless strictly needed for policy-table tests:
+
+* Real LLM provider calls
+* Message-thread ingestion beyond sanitized fixtures
+* Django action execution or external integrations
+* Coordinator, sales, or content agent changes
+
+## Testing expectations
+
+The final implementation must include **focused tests** proving:
+
+* Low-risk generic FAQ cases classify as auto-executable when policy criteria are met
+* Sensitive or high-risk cases classify as approval-required
+* Classification is deterministic from code-level policy data, not live LLM responses
+
+Use sanitized, generic fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.1.md`
+
+The document must explain:
+
+* Goal and scope of the approval policy table
+* Policy data structure and classification rules
+* Auto vs approval-required decision logic
+* Files changed
+* Tests added
+* Validation commands
+* Known limitations and deferred work (9.2, 9.3, full runtime pipeline)
+
+## Acceptance criteria
+
+* Policy table exists as code-level data/configuration with helper logic
+* Sensitive support cases require approval per the rules above
+* Low-risk generic FAQ cases may be auto-executable only when all safety criteria are met
+* Focused tests prove low-risk vs approval-required classification
+* No real external side effects, PII in fixtures/logs, or Prestia-specific hardcoding
+* `docs/phases/step-9.1.md` documents the implementation

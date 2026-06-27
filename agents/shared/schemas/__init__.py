@@ -19,8 +19,11 @@ from agents.shared.schemas.support import (
     SupportApprovalPolicyDecision,
     SupportDraftSafetySignals,
     SupportInsights,
+    SupportMessageThreadContext,
     SupportReplyDraft,
     SupportRunResponse,
+    SupportSanitizedMessage,
+    SupportSanitizedThread,
     SupportScopeEvaluation,
 )
 from agents.shared.schemas.validation import export_json_schema, validate_agent_response
@@ -42,8 +45,11 @@ __all__ = [
     "SupportApprovalPolicyDecision",
     "SupportDraftSafetySignals",
     "SupportInsights",
+    "SupportMessageThreadContext",
     "SupportReplyDraft",
     "SupportRunResponse",
+    "SupportSanitizedMessage",
+    "SupportSanitizedThread",
     "SupportScopeEvaluation",
     "export_json_schema",
     "validate_agent_response",

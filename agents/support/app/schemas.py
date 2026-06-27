@@ -18,3 +18,7 @@ class SupportRunRequest(StrictAgentModel):
     report_run_id: str | None = None
     output_language: str | None = None
     request_id: str | None = None
+    context: dict[str, Any] | None = None
+    message_threads: list[dict[str, Any]] | None = None
+    fetch_recent_messages: bool = False
+    service_token: str | None = None

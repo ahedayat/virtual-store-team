@@ -1,0 +1,134 @@
+---
+description: Phase 9.5 — Support Agent sanitized message-thread consumption from Django internal APIs
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/django_client/**/*.py"
+  - "docs/phases/step-9.5.md"
+alwaysApply: false
+---
+
+# Phase 9.5 — Support Agent Sanitized Message Thread Consumption
+
+This rule applies when working on Phase 9.5 / Support Agent sanitized message thread consumption.
+
+## Scope
+
+Step 9.5 is limited to **fetching sanitized recent support message threads from Django internal APIs** and **merging them deterministically with caller/coordinator-provided context**.
+
+Recommended locations:
+
+* `agents/support/django_fetch.py` — Django fetch with failure fallback warnings
+* `agents/support/support_context.py` (or equivalent) — context extraction, normalization, and deterministic merge rules
+* `agents/shared/django_client/client.py` — add `get_recent_messages()` helper only if missing
+* `agents/support/tests/test_django_fetch.py` (or equivalent)
+* `docs/phases/step-9.5.md` — step documentation
+
+Reuse existing modules:
+
+* Shared `DjangoClient` and service JWT / `X-Request-ID` correlation ID conventions (Step 6.2)
+* Sales Agent fetch/merge patterns in `agents/sales/django_fetch.py` and `agents/sales/sales_context.py` where applicable
+* Step 9.1 approval policy classification (`requires_approval`, `policy_code` / matched policy identifier)
+* Step 9.2 refusal/scope behavior (schema-valid structured output)
+* Step 9.3 prompt-injection guardrails (do not redesign)
+* Step 9.4 `SupportInsights` / `SupportReplyDraft` schema validation (do not redesign unless a tiny compatibility adjustment is required)
+
+## Rules
+
+1. Fetch sanitized recent message threads from the existing Django internal endpoint:
+
+   * `GET /internal/ai/stores/{store_id}/messages/recent/`
+
+2. Use the shared `DjangoClient` and existing service JWT / correlation ID forwarding conventions. Do not mint tokens inside fetch helpers.
+
+3. Treat data returned from Django as **already sanitized by the backend**. Do not reimplement the Django `PiiSanitizer` inside the Support Agent unless the repository already has a shared safe utility that is meant to be reused by agents.
+
+4. Do **not** introduce raw PII into logs, warnings, fixtures, prompts, or outputs. Avoid logging full thread bodies or message bodies at INFO level.
+
+5. Add safe fallback warnings when Django fetch fails. Use warning code `django_fetch_failed` (or equivalent project convention) and a safe message — not raw response payloads.
+
+6. Fetch failure must **not** crash the whole support run or context preparation path. Continue with caller-provided context only when fetch fails.
+
+7. Preserve caller-provided context and merge it **deterministically** with fetched Django context. Document merge precedence (e.g., Django forms the base; explicit caller fields override where applicable).
+
+8. Add `/run` request fields or pipeline input options for fetch mode only if consistent with existing Sales Agent patterns (`fetch_from_django`, `store_id`, `service_token`, etc.).
+
+9. **Preserve Step 9.1 approval policy behavior.** Do not redesign the approval policy table unless a tiny compatibility adjustment is required.
+
+10. **Preserve Step 9.2 refusal behavior.** Do not redesign refusal/scope guardrails unless a tiny compatibility adjustment is required.
+
+11. **Preserve Step 9.3 prompt-injection guardrails.** Do not redesign injection hardening unless a tiny compatibility adjustment is required.
+
+12. **Preserve Step 9.4 `SupportInsights` / `SupportReplyDraft` schema validation.** Do not redesign Step 9.4 schemas unless a tiny compatibility adjustment is required.
+
+### Data and tenancy
+
+* Fetched data remains tenant/store scoped through existing service JWT conventions on `DjangoClient`.
+* No raw PII may be logged, included in test snapshots, prompts, fixtures, or examples.
+* Tenant and store data must remain generic. Do not hardcode Prestia-specific business rules.
+* Tests must use mocks/fixtures and must not require external services.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Step 9.6** — full support runtime pipeline (`run_support_analysis()` or equivalent end-to-end analysis)
+* **Step 9.7** — support action mapping or Django persistence
+* **Step 9.8** — acceptance proof or closure (`docs/examples/support_output.json`)
+* Real external side effects such as sending Instagram DMs, refunds, order changes, payment actions, publishing, pricing changes, inventory changes, or customer contact
+* Real LLM provider calls or API keys
+* Direct database access from agents
+* Coordinator / LangGraph orchestration
+* Frontend dashboard changes
+* Redesign of Django PII sanitization in the backend
+
+Also out of scope unless strictly needed for fetch/merge:
+
+* Full thread summarization, sentiment analysis, or reply drafting
+* FastAPI `POST /run` endpoint changes beyond minimal fetch-mode input fields if consistent with existing agent patterns
+* Django action execution or external integrations
+* Coordinator, sales, or content agent changes beyond minimal shared-client needs
+
+## Testing expectations
+
+The final implementation must include **focused tests** proving:
+
+* Successful fetch of sanitized recent message threads from mocked Django responses
+* Django client failure produces a safe `django_fetch_failed` warning and does not crash context preparation
+* Caller-provided context is preserved and merged deterministically with fetched Django context
+* Fetch failure path continues with caller context only
+* Shared `DjangoClient` helper uses the correct endpoint path when applicable
+* No raw PII appears in warnings, logs, fixtures, or merged context outputs used in tests
+
+Use synthetic, sanitized fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.5.md`
+
+The document must explain:
+
+* Goal and scope of sanitized message-thread consumption and context merging
+* Django internal endpoint contract (`GET /internal/ai/stores/{store_id}/messages/recent/`)
+* `DjangoClient` usage, service JWT, and correlation ID conventions
+* Fetch helper API and deterministic context merge rules
+* Safe fallback warning behavior on fetch failure
+* Relationship to Step 9.1 approval policy, Step 9.2 refusal behavior, Step 9.3 prompt-injection guardrails, and Step 9.4 schema validation (preserve, not redesign)
+* Files changed
+* Tests added
+* Validation commands
+* Known limitations and deferred work (Steps 9.6–9.8)
+
+## Acceptance criteria
+
+* Support Agent can consume sanitized recent message threads from Django internal APIs via shared `DjangoClient`
+* Fetched data remains tenant/store scoped through existing service JWT conventions
+* Caller-provided context is merged deterministically with fetched Django context
+* Fetch failure does not crash the support run; safe `django_fetch_failed` warnings are returned
+* No raw PII is introduced into logs, warnings, fixtures, prompts, or outputs
+* Step 9.1 approval policy, Step 9.2 refusal behavior, Step 9.3 prompt-injection guardrails, and Step 9.4 schema validation are preserved
+* Focused deterministic tests cover successful fetch, fetch failure fallback, and caller-context merge without external services
+* No real external side effects, real LLM API calls, Django DB access from agents, or Prestia-specific hardcoding
+* Steps 9.6–9.8 are not implemented in this step
+* `docs/phases/step-9.5.md` documents the implementation

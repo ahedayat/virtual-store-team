@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
 from agents.shared.schemas.base import BaseAgentResponse, StrictAgentModel
+
+SupportMessageSenderRole = Literal["customer", "store", "staff", "system"]
 
 SupportPolicyCategory = Literal[
     "generic_faq",
@@ -90,6 +92,36 @@ class SupportScopeEvaluation(StrictAgentModel):
 
 
 SupportSentimentLabel = Literal["positive", "neutral", "negative", "mixed", "unknown"]
+
+
+class SupportSanitizedMessage(StrictAgentModel):
+    """Sanitized support message record for thread context consumption."""
+
+    message_ref: str = Field(min_length=1)
+    sender_role: SupportMessageSenderRole
+    text: str = Field(min_length=1)
+    created_at: str | None = None
+
+
+class SupportSanitizedThread(StrictAgentModel):
+    """Sanitized support message thread for context merge and future analysis."""
+
+    thread_ref: str = Field(min_length=1)
+    messages: list[SupportSanitizedMessage] = Field(default_factory=list)
+    channel: str | None = None
+    status: str | None = None
+    last_message_at: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class SupportMessageThreadContext(StrictAgentModel):
+    """Resolved sanitized message-thread context for Support Agent consumption."""
+
+    store_id: str | None = None
+    thread_count: int | None = None
+    message_threads: list[SupportSanitizedThread] = Field(default_factory=list)
+    django_fetched: bool = False
+    generated_at: str | None = None
 
 
 class SupportAggregateSentiment(StrictAgentModel):

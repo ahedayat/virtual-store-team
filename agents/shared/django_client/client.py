@@ -165,6 +165,24 @@ class DjangoClient:
         """Fetch low-stock inventory from ``GET /internal/ai/stores/{id}/inventory/low-stock/``."""
         return self.get(f"/internal/ai/stores/{store_id}/inventory/low-stock/")
 
+    def get_recent_messages(
+        self,
+        store_id: str,
+        *,
+        thread_limit: int | None = None,
+        messages_per_thread: int | None = None,
+    ) -> dict[str, Any]:
+        """Fetch sanitized recent message threads from Django internal API."""
+        params: dict[str, Any] = {}
+        if thread_limit is not None:
+            params["thread_limit"] = thread_limit
+        if messages_per_thread is not None:
+            params["messages_per_thread"] = messages_per_thread
+        return self.get(
+            f"/internal/ai/stores/{store_id}/messages/recent/",
+            params=params or None,
+        )
+
     def _request(
         self,
         method: str,

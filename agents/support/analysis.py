@@ -10,6 +10,7 @@ from agents.shared.llm import get_llm_provider
 from agents.shared.schemas.errors import AgentSchemaValidationError
 from agents.shared.schemas.support import SupportRunResponse
 from agents.support.prompts import build_support_reply_messages
+from agents.support.refusal import evaluate_support_scope
 from agents.support.validation import (
     SupportLLMOutputError,
     ensure_valid_support_run_response,
@@ -47,6 +48,19 @@ def run_support_analysis(
     del report_run_id  # reserved for Phase 9 business workflows
 
     language = _resolve_output_language(output_language)
+    scope = evaluate_support_scope(customer_message, output_language=language)
+    if scope.is_refusal:
+        return SupportRunResponse(
+            agent="support-agent",
+            status="refused",
+            language=language,
+            reply=scope.safe_message,
+            intent=scope.refusal_code or "unknown_out_of_scope",
+            confidence=1.0,
+            requires_human_review=False,
+            request_id=request_id,
+        )
+
     provider = llm_provider if llm_provider is not None else get_llm_provider()
     messages = build_support_reply_messages(
         customer_message=customer_message,

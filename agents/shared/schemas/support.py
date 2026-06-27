@@ -30,6 +30,23 @@ SupportPolicyCategory = Literal[
 SupportRiskLevel = Literal["low", "medium", "high"]
 SupportDefaultActionType = Literal["support.reply_draft", "support.escalate"]
 
+SupportScopeStatus = Literal["in_scope", "approval_required", "out_of_scope"]
+
+SupportRefusalCode = Literal[
+    "sales_analysis_request",
+    "marketing_or_content_request",
+    "pricing_or_discount_request",
+    "inventory_or_restock_request",
+    "refund_or_payment_action",
+    "order_mutation_request",
+    "legal_or_medical_advice",
+    "credential_or_secret_request",
+    "direct_database_or_internal_api_request",
+    "approval_bypass_request",
+    "impersonate_other_agent_request",
+    "unknown_out_of_scope",
+]
+
 
 class SupportDraftSafetySignals(StrictAgentModel):
     """Draft safety flags used to gate auto-executable support reply classification."""
@@ -52,6 +69,21 @@ class SupportApprovalPolicyDecision(StrictAgentModel):
     reason: str = Field(min_length=1)
     allowed_auto_executable: bool
     matched_policy_code: str = Field(min_length=1)
+
+
+class SupportScopeEvaluation(StrictAgentModel):
+    """Deterministic scope/refusal classification for a support customer message."""
+
+    is_refusal: bool
+    scope_status: SupportScopeStatus
+    refusal_code: SupportRefusalCode | None = None
+    reason: str = Field(min_length=1)
+    safe_message: str = Field(min_length=1)
+    suggested_next_step: str | None = None
+    requires_approval: bool
+    action_type: SupportDefaultActionType | None = None
+    warnings: list[str] = Field(default_factory=list)
+    support_category: SupportPolicyCategory | None = None
 
 
 class SupportRunResponse(StrictAgentModel):

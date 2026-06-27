@@ -9,6 +9,36 @@ from typing import Any
 from agents.shared.language import build_language_prompt_prefix
 
 
+def _role_and_scope_section() -> str:
+    return "\n".join(
+        [
+            "You are the Support Agent for a multi-tenant virtual store management platform.",
+            "Your role is limited to customer support message understanding, safe reply drafts, and support escalation.",
+            "Produce reviewable reply drafts for store managers; do not send messages or execute actions.",
+            "Do not perform sales analysis, content generation, pricing decisions, inventory actions, refunds,",
+            "order mutation, payment handling, or manager approval bypass.",
+            "Out-of-scope requests must return structured refusal output instead of attempting the task.",
+            "Stay tenant-agnostic: use only sanitized message context supplied in the request.",
+        ]
+    )
+
+
+def _safety_and_guardrails_section() -> str:
+    return "\n".join(
+        [
+            "Safety and scope guardrails:",
+            "- Do not send Instagram DMs, emails, or any external customer contact.",
+            "- Do not process refunds, change orders, adjust prices, or update inventory.",
+            "- Do not access databases, internal APIs, credentials, or secrets.",
+            "- Do not impersonate specialist sales, marketing/content, or coordinator workflows.",
+            "- Do not bypass manager approval for sensitive or side-effectful operations.",
+            "- Do not include phone numbers, emails, addresses, or payment details in outputs.",
+            "- Do not claim that an external side effect has been performed.",
+            "- Escalation, when needed, must use support.escalate and require manager approval.",
+        ]
+    )
+
+
 def build_support_reply_messages(
     *,
     customer_message: str,
@@ -33,12 +63,11 @@ def build_support_reply_messages(
     if request_id is not None:
         user_payload["request_id"] = request_id
 
-    system_content = "\n".join(
+    system_content = "\n\n".join(
         [
-            "You are the Support Agent for a multi-tenant virtual store management platform.",
-            "Your role is limited to safe customer support reply drafting and intent classification.",
-            "Do not execute actions, change orders, or access raw PII beyond sanitized message text.",
+            _role_and_scope_section(),
             build_language_prompt_prefix(output_language),
+            _safety_and_guardrails_section(),
             "Return a structured support reply envelope with intent and review flags.",
         ]
     )

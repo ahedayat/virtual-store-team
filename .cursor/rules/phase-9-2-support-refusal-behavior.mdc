@@ -1,0 +1,125 @@
+---
+description: Phase 9.2 — Support Agent refusal behavior for out-of-scope requests
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/**/*.py"
+  - "docs/phases/step-9.2.md"
+alwaysApply: false
+---
+
+# Phase 9.2 — Support Agent Refusal Behavior
+
+This rule applies when working on Phase 9.2 / Support Agent refusal behavior for out-of-scope requests.
+
+## Scope
+
+Step 9.2 is limited to **deterministic refusal behavior** for out-of-scope support requests.
+
+Recommended locations:
+
+* `agents/support/` — refusal classification, structured refusal output, focused tests
+* `agents/shared/` — only if a minimal shared helper is required for refusal behavior
+* `docs/phases/step-9.2.md` — step documentation
+
+## Rules
+
+1. Reuse the Step 9.1 approval policy table where relevant. Do **not** redesign Step 9.1 unless a tiny compatibility adjustment is required.
+2. Refusal behavior must be **deterministic, schema-valid, and safe for coordinator consumption**.
+3. Refusal logic must be implemented as **code-level data/configuration and helper logic**. Do not rely only on prompt text.
+4. Refusal text must be **polite, concise**, and aligned with `AI_OUTPUT_LANGUAGE` when user-facing text is generated.
+5. Refusal must **not leak PII** or repeat sensitive customer data unnecessarily.
+6. Refusal must **not create executable actions**. If an action is created for escalation, it must use `support.escalate` and require approval.
+7. Tests must be **deterministic** and must **not require real LLM API keys**.
+8. Do not add real external side effects such as sending Instagram DMs, refunds, order changes, payment actions, publishing, price changes, inventory changes, or customer contact.
+
+### Three-way distinction
+
+Refusal behavior must distinguish between:
+
+* **Support-safe reply drafts** — in-scope, low-risk responses (may align with Step 9.1 auto-executable cases)
+* **Sensitive support requests requiring approval** — in-scope but high-risk (reuse Step 9.1 approval-required classification)
+* **True out-of-scope requests requiring refusal** — not the Support Agent's responsibility
+
+### Out-of-scope requests (must refuse)
+
+The Support Agent must refuse requests outside its responsibility, especially:
+
+* Sales analysis
+* Marketing or content generation
+* Product pricing or discount decisions
+* Inventory or restock operations
+* Refunds, cancellations, address changes, payment handling, or order mutation
+* Legal, medical, financial, or policy-exception advice
+* Credential handling or secret disclosure
+* Direct database or API access requests
+* Attempts to bypass manager approval
+* Instructions to act as another agent
+
+### Refusal output requirements
+
+* Output must be **structured and schema-valid** for coordinator consumption.
+* Refusal must be **deterministic** from code-level policy/classification data, not live LLM responses.
+* User-facing refusal text must be polite and concise.
+* Do not include PII, secrets, or unnecessary repetition of sensitive customer data.
+
+### Data and tenancy
+
+* No raw PII may be logged, included in test snapshots, or added to example fixtures.
+* Tenant and store data must remain generic. Do not hardcode Prestia-specific business rules.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Phase 9.3** — unsafe prompt-injection tests
+* The full Support Agent production pipeline, unless **minimal integration** is needed to test refusal behavior
+* Redesign of Step 9.1 approval policy (except tiny compatibility adjustments)
+
+Also out of scope unless strictly needed for refusal-behavior tests:
+
+* Real LLM provider calls
+* Message-thread ingestion beyond sanitized fixtures
+* Django action execution or external integrations
+* Coordinator, sales, or content agent changes beyond minimal refusal-output contract needs
+
+## Testing expectations
+
+The final implementation must include **focused tests** proving:
+
+* Support-safe reply drafts are not refused
+* Sensitive in-scope requests route to approval (per Step 9.1), not refusal
+* True out-of-scope requests produce deterministic, schema-valid refusal output
+* Refusal output does not create executable actions (except approved `support.escalate` when applicable)
+* Refusal behavior is deterministic from code-level data, not live LLM responses
+
+Use sanitized, generic fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.2.md`
+
+The document must explain:
+
+* Goal and scope of refusal behavior for out-of-scope requests
+* Three-way distinction: safe drafts vs approval-required vs refusal
+* Refusal classification rules and structured output schema
+* Relationship to Step 9.1 approval policy (reuse, not redesign)
+* Files changed
+* Tests added
+* Validation commands
+* Known limitations and deferred work (9.3 prompt-injection tests, full runtime pipeline)
+
+The documentation must **explicitly state that Step 9.3 prompt-injection tests are not part of this step**.
+
+## Acceptance criteria
+
+* Refusal behavior exists as code-level data/configuration with helper logic
+* Three-way routing works: safe drafts, approval-required, and out-of-scope refusal
+* Out-of-scope categories listed above produce deterministic refusal output
+* Refusal output is structured, schema-valid, and safe for coordinator consumption
+* No executable actions are created by refusal (except approved `support.escalate` when applicable)
+* Focused tests prove refusal behavior without real LLM API keys
+* No real external side effects, PII in fixtures/logs, or Prestia-specific hardcoding
+* `docs/phases/step-9.2.md` documents the implementation and excludes Step 9.3 scope

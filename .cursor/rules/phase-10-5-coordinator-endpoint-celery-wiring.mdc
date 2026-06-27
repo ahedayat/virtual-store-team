@@ -1,0 +1,97 @@
+---
+description: Phase 10.5 guardrails for real coordinator endpoint and Celery completion wiring.
+globs:
+  - "agents/coordinator/**"
+  - "agents/shared/**"
+  - "backend/**"
+  - "docs/phases/step-10.5.md"
+  - ".env.example"
+alwaysApply: false
+---
+
+# Phase 10.5 — Real Coordinator Endpoint & Celery Completion Wiring
+
+This rule applies only to Phase 10.5: replacing the coordinator daily-report stub endpoint with real workflow execution and aligning Celery so report completion is coordinator-driven.
+
+## Scope
+
+Implement the real runtime path for:
+
+* `POST /workflows/daily-report`
+* request payload validation and mapping into coordinator workflow state
+* service JWT and correlation/request ID forwarding
+* coordinator workflow execution through the existing runner/workflow function
+* final report submission to Django internal report completion API
+* Celery handoff to coordinator without masking coordinator incompleteness through skeleton fallback
+* focused endpoint and Celery/coordinator handoff tests
+
+## Required behavior
+
+1. `POST /workflows/daily-report` must run the real coordinator workflow, not return the old Phase 6.4 stub response.
+2. The endpoint must call the existing `run_daily_report_workflow()` or the current equivalent workflow entrypoint.
+3. The request schema must safely validate required workflow inputs such as `report_run_id`, context reference or context fields, service JWT, and request/correlation ID according to existing project conventions.
+4. Service JWT and correlation/request ID must be forwarded into the coordinator workflow and Django client.
+5. The coordinator must submit final report completion through Django internal APIs.
+6. Celery must call coordinator and rely on coordinator-driven Django completion.
+7. Celery must not mark a report completed merely because the coordinator endpoint returned a generic 2xx stub response.
+8. Safe coordinator failures must result in a sanitized error path:
+
+   * either coordinator returns a safe failure response
+   * or Celery marks `ReportRun` failed according to existing backend conventions
+9. No direct database access from agents.
+10. No auto-approval or action execution.
+11. Preserve Step 10.1 star topology.
+12. Preserve Step 10.2 timeout behavior.
+13. Preserve Step 10.3 AgentOutput persistence behavior.
+14. Preserve Step 10.4 mock integration behavior where applicable.
+15. Do not implement Step 10.6 LangGraph/parallel specialist execution in this step.
+16. Do not implement Step 10.7 DB-backed final E2E closure in this step.
+
+## Non-goals
+
+* No LangGraph rewrite in this step.
+* No specialist parallelism implementation in this step.
+* No Phase 11 frontend/dashboard work.
+* No Phase 12 demo polish.
+* No real LLM calls.
+* No real Instagram publishing or sending.
+* No new external side effects.
+* No broad architecture rewrite.
+* No raw PII, prompts, JWTs, Authorization headers, or full payload logging.
+
+## Testing requirements
+
+Add deterministic tests for:
+
+* coordinator endpoint invokes the real workflow
+* endpoint maps request payload into workflow state correctly
+* service JWT and correlation/request ID are forwarded
+* successful endpoint path submits final report through Django client/internal API or existing test double
+* endpoint failure returns sanitized errors
+* Celery calls coordinator and no longer treats a stub 2xx as successful completion
+* Celery failure handling marks `ReportRun` failed or follows the existing safe failure convention
+* existing Step 10.1, 10.2, 10.3, and 10.4 focused tests remain passing
+
+Tests must not require real LLM API keys or live external services.
+
+## Documentation requirements
+
+Create:
+
+docs/phases/step-10.5.md
+
+The document must include:
+
+* Step goal
+* Scope
+* Non-goals
+* Implementation summary
+* Request/response contract for `POST /workflows/daily-report`
+* Celery/coordinator handoff behavior
+* Failure behavior
+* Files changed
+* Tests added
+* Verification commands and results
+* Known limitations
+* Explicit confirmation that Step 10.6 LangGraph/parallelism was not implemented
+* Explicit confirmation that Step 10.7 DB-backed final E2E closure was not implemented

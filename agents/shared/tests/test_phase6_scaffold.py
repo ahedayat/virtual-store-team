@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from agents.content.app.main import app as content_app
 from agents.coordinator.app.main import app as coordinator_app
-from agents.coordinator.tests.test_daily_report_stub import build_valid_payload
+from agents.coordinator.tests.test_daily_report_endpoint import build_valid_payload
 from agents.sales.app.main import app as sales_app
 from agents.sales.tests.test_schema_validation import EMPTY_CONTEXT_BUNDLE, NON_EMPTY_CONTEXT
 from agents.support.app.main import app as support_app
@@ -36,13 +36,29 @@ class Phase6ScaffoldVerificationTests(unittest.TestCase):
                 self.assertEqual(body["service"], service_name)
 
     @patch.dict(os.environ, {"LLM_PROVIDER": "mock", "OPENAI_API_KEY": ""}, clear=False)
-    def test_coordinator_daily_report_stub_returns_structured_output(self) -> None:
+    @patch("agents.coordinator.app.main.execute_daily_report_workflow")
+    def test_coordinator_daily_report_endpoint_returns_structured_output(
+        self,
+        mock_execute,
+    ) -> None:
+        from unittest.mock import MagicMock
+
+        from agents.coordinator.app.workflow_endpoint import COMPLETED_MESSAGE
+
+        mock_execute.return_value = MagicMock(
+            status="completed",
+            workflow="daily_report",
+            report_run_id="11111111-1111-4111-8111-111111111111",
+            message=COMPLETED_MESSAGE,
+            warnings=[],
+            partial=False,
+        )
         client = TestClient(coordinator_app)
         response = client.post("/workflows/daily-report", json=build_valid_payload())
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["status"], "accepted")
+        self.assertEqual(body["status"], "completed")
         self.assertEqual(body["workflow"], "daily_report")
 
     @patch.dict(os.environ, {"LLM_PROVIDER": "mock", "OPENAI_API_KEY": ""}, clear=False)

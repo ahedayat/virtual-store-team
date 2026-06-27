@@ -29,12 +29,13 @@ class DailyReportJobRequest(StrictAgentModel):
         return self
 
 
-class DailyReportStubResponse(StrictAgentModel):
-    status: Literal["accepted"]
+class DailyReportWorkflowResponse(StrictAgentModel):
+    status: Literal["completed", "failed"]
     workflow: Literal["daily_report"]
     report_run_id: str
     message: str
     warnings: list[AgentWarning] = Field(default_factory=list)
+    partial: bool = False
 
     @field_validator("report_run_id")
     @classmethod

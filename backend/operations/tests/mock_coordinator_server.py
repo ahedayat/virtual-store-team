@@ -5,8 +5,13 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+from django.db import close_old_connections
+
+RequestCallback = Callable[[dict[str, Any]], None]
 
 
 class _CoordinatorRequestHandler(BaseHTTPRequestHandler):
@@ -19,14 +24,27 @@ class _CoordinatorRequestHandler(BaseHTTPRequestHandler):
         server: MockCoordinatorHTTPServer = self.server  # type: ignore[assignment]
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
-        server.requests.append(
-            {
-                "method": "POST",
-                "path": self.path,
-                "headers": {key: value for key, value in self.headers.items()},
-                "body": body.decode("utf-8") if body else "",
-            }
-        )
+        body_text = body.decode("utf-8") if body else ""
+        request_record = {
+            "method": "POST",
+            "path": self.path,
+            "headers": {key: value for key, value in self.headers.items()},
+            "body": body_text,
+        }
+        server.requests.append(request_record)
+
+        payload: dict[str, Any] = {}
+        if body_text:
+            try:
+                parsed = json.loads(body_text)
+                if isinstance(parsed, dict):
+                    payload = parsed
+            except json.JSONDecodeError:
+                payload = {}
+
+        if server.on_request is not None:
+            close_old_connections()
+            server.on_request(payload)
 
         if server.response_delay_seconds:
             time.sleep(server.response_delay_seconds)
@@ -48,16 +66,33 @@ class MockCoordinatorHTTPServer(ThreadingHTTPServer):
         self.response_status = 200
         self.response_body = b'{"status":"accepted"}'
         self.response_delay_seconds = 0.0
+        self.on_request: RequestCallback | None = None
 
 
 class MockCoordinatorServer:
     """Threaded mock coordinator HTTP server bound to an ephemeral localhost port."""
 
-    def __init__(self, *, path: str = "/workflows/daily-report") -> None:
+    def __init__(
+        self,
+        *,
+        path: str = "/workflows/daily-report",
+        on_request: RequestCallback | None = None,
+    ) -> None:
         self._path = path
         self._httpd: MockCoordinatorHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._port = 0
+        self._on_request = on_request
+
+    @property
+    def on_request(self) -> RequestCallback | None:
+        return self._on_request
+
+    @on_request.setter
+    def on_request(self, value: RequestCallback | None) -> None:
+        self._on_request = value
+        if self._httpd is not None:
+            self._httpd.on_request = value
 
     @property
     def requests(self) -> list[dict[str, Any]]:
@@ -107,6 +142,7 @@ class MockCoordinatorServer:
         if self._httpd is not None:
             return
         self._httpd = MockCoordinatorHTTPServer(("127.0.0.1", 0))
+        self._httpd.on_request = self._on_request
         self._port = self._httpd.server_address[1]
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
@@ -128,6 +164,25 @@ class MockCoordinatorServer:
     def set_json_response(self, payload: dict[str, Any], *, status: int = 200) -> None:
         self.response_status = status
         self.response_body = json.dumps(payload).encode("utf-8")
+
+    def set_completed_response(
+        self,
+        *,
+        report_run_id: str,
+        status: int | None = None,
+    ) -> None:
+        payload = {
+            "status": "completed",
+            "workflow": "daily_report",
+            "report_run_id": report_run_id,
+            "message": "Daily report workflow completed.",
+            "warnings": [],
+            "partial": False,
+        }
+        if status is None:
+            self.response_body = json.dumps(payload).encode("utf-8")
+            return
+        self.set_json_response(payload, status=status)
 
     def __enter__(self) -> MockCoordinatorServer:
         self.start()

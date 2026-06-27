@@ -730,7 +730,7 @@ class ReportRunService:
 
     @classmethod
     def mark_completed_if_still_running(cls, *, report_run: ReportRun) -> ReportRun:
-        """Skeleton completion when coordinator HTTP succeeds without internal complete API."""
+        """Legacy skeleton completion helper; not used by coordinator-driven Celery flow."""
         with transaction.atomic():
             locked_report_run = ReportRun.objects.select_for_update().get(pk=report_run.pk)
             if locked_report_run.status != REPORT_RUN_STATUS_RUNNING:

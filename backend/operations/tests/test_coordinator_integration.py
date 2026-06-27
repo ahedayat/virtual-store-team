@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -13,6 +15,11 @@ from operations.constants import (
     REPORT_RUN_STATUS_RUNNING,
 )
 from operations.models import ReportRun
+from operations.coordinator_client import (
+    COORDINATOR_WORKFLOW_COMPLETED,
+    CoordinatorDailyReportClient,
+)
+from operations.services import ReportRunService
 from operations.tests.mock_coordinator_server import MockCoordinatorServer
 from stores.models import Store
 from tenants.models import Tenant
@@ -30,6 +37,8 @@ EAGER_CELERY_SETTINGS = {
     "CELERY_TASK_ALWAYS_EAGER": True,
     "CELERY_TASK_EAGER_PROPAGATES": True,
 }
+
+_REAL_TRIGGER_DAILY_REPORT = CoordinatorDailyReportClient.trigger_daily_report.__func__
 
 
 class CoordinatorIntegrationTests(APITestCase):
@@ -52,8 +61,44 @@ class CoordinatorIntegrationTests(APITestCase):
             store=self.store,
         )
         self.generate_url = reverse("api-reports-generate")
-        self.mock_coordinator = MockCoordinatorServer()
+        self.mock_coordinator = MockCoordinatorServer(
+            on_request=self._set_completed_coordinator_response
+        )
         self.mock_coordinator.start()
+
+    def _set_completed_coordinator_response(self, payload: dict) -> None:
+        report_run_id = payload.get("report_run_id")
+        if not report_run_id:
+            return
+        self.mock_coordinator.set_completed_response(report_run_id=str(report_run_id))
+
+    def _trigger_with_coordinator_driven_completion(
+        self,
+        *,
+        report_run: ReportRun,
+    ):
+        trigger_implementation = _REAL_TRIGGER_DAILY_REPORT
+        result = trigger_implementation(
+            CoordinatorDailyReportClient,
+            report_run=report_run,
+        )
+        if result.workflow_status != COORDINATOR_WORKFLOW_COMPLETED:
+            return result
+
+        ReportRunService.complete_from_ai_payload(
+            report_run=report_run,
+            tenant=report_run.tenant,
+            store=report_run.store,
+            service_name=AI_SERVICE_COORDINATOR,
+            report_payload={
+                "generated_at": "2026-06-27T12:00:00+00:00",
+                "period": {
+                    "from": "2026-06-27T00:00:00+00:00",
+                    "to": "2026-06-27T12:00:00+00:00",
+                },
+            },
+        )
+        return result
 
     def tearDown(self):
         self.mock_coordinator.response_delay_seconds = 0.0
@@ -98,9 +143,14 @@ class CoordinatorIntegrationTests(APITestCase):
         self.assertEqual(str(claims["report_run_id"]), report_run_id)
 
     def test_success_path_completes_report_run_via_mock_coordinator(self):
-        with self._integration_settings():
-            self.client.force_authenticate(user=self.manager)
-            response = self.client.post(self.generate_url)
+        with patch.object(
+            CoordinatorDailyReportClient,
+            "trigger_daily_report",
+            side_effect=self._trigger_with_coordinator_driven_completion,
+        ):
+            with self._integration_settings():
+                self.client.force_authenticate(user=self.manager)
+                response = self.client.post(self.generate_url)
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.assertEqual(response.data["status"], REPORT_RUN_STATUS_QUEUED)
@@ -111,6 +161,7 @@ class CoordinatorIntegrationTests(APITestCase):
         self._assert_expected_coordinator_payload(report_run)
 
     def test_coordinator_http_500_marks_report_run_failed_with_safe_error(self):
+        self.mock_coordinator.on_request = None
         self.mock_coordinator.set_json_response(
             {
                 "error": "internal failure",
@@ -133,6 +184,7 @@ class CoordinatorIntegrationTests(APITestCase):
         self._assert_expected_coordinator_payload(report_run)
 
     def test_coordinator_connection_error_marks_report_run_failed(self):
+        self.mock_coordinator.on_request = None
         unreachable_url = "http://127.0.0.1:1/workflows/daily-report"
         with self._integration_settings(
             COORDINATOR_AGENT_URL="http://127.0.0.1:1",
@@ -148,6 +200,7 @@ class CoordinatorIntegrationTests(APITestCase):
         self.assertNotIn("@", report_run.error_message)
 
     def test_coordinator_timeout_marks_report_run_failed(self):
+        self.mock_coordinator.on_request = None
         self.mock_coordinator.response_delay_seconds = 2.0
         with self._integration_settings(COORDINATOR_HTTP_TIMEOUT_SECONDS=1):
             self.client.force_authenticate(user=self.manager)
@@ -157,6 +210,52 @@ class CoordinatorIntegrationTests(APITestCase):
         report_run = ReportRun.objects.get(pk=response.data["report_run_id"])
         self.assertEqual(report_run.status, REPORT_RUN_STATUS_FAILED)
         self.assertIn("timed out", report_run.error_message.lower())
+
+    def test_stub_accepted_response_marks_report_run_failed(self):
+        self.mock_coordinator.on_request = None
+        self.mock_coordinator.set_json_response(
+            {
+                "status": "accepted",
+                "workflow": "daily_report",
+                "report_run_id": "placeholder",
+                "message": "Coordinator stub accepted the daily report job.",
+                "warnings": [],
+            }
+        )
+        with self._integration_settings():
+            self.client.force_authenticate(user=self.manager)
+            response = self.client.post(self.generate_url)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        report_run = ReportRun.objects.get(pk=response.data["report_run_id"])
+        self.assertEqual(report_run.status, REPORT_RUN_STATUS_FAILED)
+        self.assertIn("stub acceptance", report_run.error_message.lower())
+
+    def test_coordinator_workflow_failed_response_marks_report_run_failed(self):
+        self.mock_coordinator.on_request = None
+
+        def set_failed_response(payload: dict) -> None:
+            report_run_id = payload.get("report_run_id", "")
+            self.mock_coordinator.set_json_response(
+                {
+                    "status": "failed",
+                    "workflow": "daily_report",
+                    "report_run_id": report_run_id,
+                    "message": "Context fetch timed out.",
+                    "warnings": [],
+                    "partial": False,
+                }
+            )
+
+        self.mock_coordinator.on_request = set_failed_response
+        with self._integration_settings():
+            self.client.force_authenticate(user=self.manager)
+            response = self.client.post(self.generate_url)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        report_run = ReportRun.objects.get(pk=response.data["report_run_id"])
+        self.assertEqual(report_run.status, REPORT_RUN_STATUS_FAILED)
+        self.assertIn("timed out", report_run.error_message)
 
     def test_duplicate_active_run_does_not_call_coordinator(self):
         existing = ReportRun.objects.create(

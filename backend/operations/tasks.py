@@ -6,7 +6,16 @@ import time
 from celery import shared_task
 from django.core.exceptions import ValidationError
 
-from operations.coordinator_client import CoordinatorClientError, CoordinatorDailyReportClient
+from operations.constants import (
+    REPORT_RUN_STATUS_COMPLETED,
+    REPORT_RUN_STATUS_FAILED,
+)
+from operations.coordinator_client import (
+    COORDINATOR_WORKFLOW_COMPLETED,
+    COORDINATOR_WORKFLOW_FAILED,
+    CoordinatorClientError,
+    CoordinatorDailyReportClient,
+)
 from operations.models import Action, ReportRun
 from operations.services import ActionService, ReportRunService
 
@@ -43,7 +52,9 @@ def generate_daily(report_run_id: str) -> dict[str, str]:
 
     started_at = time.monotonic()
     try:
-        status_code = CoordinatorDailyReportClient.trigger_daily_report(report_run=report_run)
+        coordinator_result = CoordinatorDailyReportClient.trigger_daily_report(
+            report_run=report_run
+        )
     except CoordinatorClientError as exc:
         duration_ms = int((time.monotonic() - started_at) * 1000)
         logger.warning(
@@ -60,18 +71,50 @@ def generate_daily(report_run_id: str) -> dict[str, str]:
 
     duration_ms = int((time.monotonic() - started_at) * 1000)
     logger.info(
-        "Coordinator daily report request succeeded",
+        "Coordinator daily report workflow returned",
         extra={
             **log_context,
             "duration_ms": duration_ms,
-            "http_status_code": status_code,
+            "http_status_code": coordinator_result.http_status_code,
+            "workflow_status": coordinator_result.workflow_status,
         },
     )
 
     report_run.refresh_from_db()
-    if not ReportRunService.is_terminal(report_run):
-        ReportRunService.mark_completed_if_still_running(report_run=report_run)
+    if coordinator_result.workflow_status == COORDINATOR_WORKFLOW_COMPLETED:
+        if report_run.status == REPORT_RUN_STATUS_COMPLETED:
+            return {
+                "status": report_run.status,
+                "report_run_id": str(report_run.id),
+            }
+        ReportRunService.mark_failed(
+            report_run=report_run,
+            error_message=(
+                "Coordinator reported completion but the report run was not completed in Django."
+            ),
+        )
+        report_run.refresh_from_db()
+        return {
+            "status": report_run.status,
+            "report_run_id": str(report_run.id),
+        }
 
+    if coordinator_result.workflow_status == COORDINATOR_WORKFLOW_FAILED:
+        if report_run.status != REPORT_RUN_STATUS_FAILED:
+            ReportRunService.mark_failed(
+                report_run=report_run,
+                error_message=coordinator_result.message,
+            )
+        report_run.refresh_from_db()
+        return {
+            "status": report_run.status,
+            "report_run_id": str(report_run.id),
+        }
+
+    ReportRunService.mark_failed(
+        report_run=report_run,
+        error_message="Coordinator returned an unsupported workflow completion status.",
+    )
     report_run.refresh_from_db()
     return {
         "status": report_run.status,

@@ -346,7 +346,9 @@ class MockProvider:
             )
 
         if _SUPPORT_AGENT_MARKER in system_content:
-            customer_message = user_payload.get("customer_message")
+            customer_message = user_payload.get("untrusted_customer_message")
+            if not isinstance(customer_message, str):
+                customer_message = user_payload.get("customer_message")
             channel = user_payload.get("channel")
             request_id = user_payload.get("request_id")
             if not isinstance(customer_message, str):

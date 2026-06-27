@@ -44,6 +44,9 @@ SupportRefusalCode = Literal[
     "direct_database_or_internal_api_request",
     "approval_bypass_request",
     "impersonate_other_agent_request",
+    "system_prompt_disclosure_request",
+    "instruction_override_request",
+    "false_completion_instruction",
     "unknown_out_of_scope",
 ]
 

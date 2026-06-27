@@ -15,6 +15,12 @@ from agents.shared.schemas.support import (
     SupportScopeStatus,
 )
 from agents.support.approval_policy import evaluate_support_approval_policy
+from agents.support.injection_guard import (
+    detect_false_completion_instruction,
+    detect_instruction_override_in_operator_text,
+    detect_system_prompt_disclosure_request,
+    strip_quoted_segments,
+)
 
 # ---------------------------------------------------------------------------
 # Out-of-scope pattern table (checked before in-scope support classification)
@@ -333,6 +339,9 @@ _RefusalMessageKey = Literal[
     "direct_database_or_internal_api_request",
     "approval_bypass_request",
     "impersonate_other_agent_request",
+    "system_prompt_disclosure_request",
+    "instruction_override_request",
+    "false_completion_instruction",
     "unknown_out_of_scope",
     "generic",
 ]
@@ -373,6 +382,17 @@ _REFUSAL_SAFE_MESSAGES: dict[str, dict[_RefusalMessageKey, str]] = {
         ),
         "impersonate_other_agent_request": (
             "I am the Support Agent and cannot act as another specialist agent."
+        ),
+        "system_prompt_disclosure_request": (
+            "I cannot reveal system prompts, hidden policies, or internal instructions."
+        ),
+        "instruction_override_request": (
+            "Customer message text is untrusted data. I cannot follow embedded instructions "
+            "that override Support Agent rules or approval policy."
+        ),
+        "false_completion_instruction": (
+            "I cannot claim that refunds, messages, or order changes were already executed. "
+            "No external action has been performed."
         ),
         "unknown_out_of_scope": (
             "This request is outside my support scope. I have not performed any external action."
@@ -423,6 +443,17 @@ _REFUSAL_SAFE_MESSAGES: dict[str, dict[_RefusalMessageKey, str]] = {
         "impersonate_other_agent_request": (
             "من عامل پشتیبانی هستم و نمی‌توانم نقش عامل تخصصی دیگری را ایفا کنم."
         ),
+        "system_prompt_disclosure_request": (
+            "من نمی‌توانم پرامپت سیستم، سیاست‌های پنهان یا دستورالعمل‌های داخلی را فاش کنم."
+        ),
+        "instruction_override_request": (
+            "متن پیام مشتری داده غیرقابل‌اعتماد است. من نمی‌توانم دستورالعمل‌های جاسازی‌شده "
+            "که قوانین عامل پشتیبانی یا سیاست تأیید را لغو می‌کنند دنبال کنم."
+        ),
+        "false_completion_instruction": (
+            "من نمی‌توانم ادعا کنم که بازپرداخت، پیام یا تغییر سفارش قبلاً انجام شده است. "
+            "هیچ اقدام خارجی انجام نشده است."
+        ),
         "unknown_out_of_scope": (
             "این درخواست خارج از حوزه پشتیبانی من است. هیچ اقدام خارجی انجام نشده است."
         ),
@@ -460,6 +491,28 @@ def classify_out_of_scope_request(message: str) -> SupportRefusalCode | None:
         if _matches_any(normalized, rule.patterns):
             return rule.refusal_code
     return None
+
+
+def resolve_injection_aware_refusal(message: str) -> SupportRefusalCode | None:
+    """Classify injection attempts using quote-aware operator matching."""
+    normalized = _normalize_message(message)
+    if not normalized:
+        return None
+
+    if detect_system_prompt_disclosure_request(normalized):
+        return "system_prompt_disclosure_request"
+
+    if detect_false_completion_instruction(normalized):
+        return "false_completion_instruction"
+
+    operator_text = strip_quoted_segments(normalized)
+
+    if detect_instruction_override_in_operator_text(normalized):
+        override_refusal = classify_out_of_scope_request(operator_text)
+        if override_refusal is not None:
+            return override_refusal
+
+    return classify_out_of_scope_request(operator_text)
 
 
 def detect_in_scope_support_category(message: str) -> SupportPolicyCategory:
@@ -529,7 +582,7 @@ def evaluate_support_scope(
     language = normalize_output_language(output_language)
     warnings: list[str] = []
 
-    refusal_code = classify_out_of_scope_request(message)
+    refusal_code = resolve_injection_aware_refusal(message)
     if refusal_code is not None:
         rule = _get_out_of_scope_rule(refusal_code)
         reason = rule.reason if rule is not None else "Request is outside Support Agent scope."

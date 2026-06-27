@@ -10,6 +10,7 @@ from agents.shared.llm import get_llm_provider
 from agents.shared.schemas.errors import AgentSchemaValidationError
 from agents.shared.schemas.support import SupportRunResponse
 from agents.support.prompts import build_support_reply_messages
+from agents.support.injection_guard import sanitize_support_reply_output
 from agents.support.refusal import evaluate_support_scope
 from agents.support.validation import (
     SupportLLMOutputError,
@@ -78,6 +79,11 @@ def run_support_analysis(
         validated = ensure_valid_support_run_response(parsed)
 
         updates: dict[str, Any] = {}
+        sanitized_reply = sanitize_support_reply_output(validated.reply, customer_message)
+        if sanitized_reply != validated.reply:
+            updates["reply"] = sanitized_reply
+        if scope.requires_approval and not validated.requires_human_review:
+            updates["requires_human_review"] = True
         if validated.language != language:
             updates["language"] = language
         if request_id and validated.request_id is None:

@@ -1,0 +1,114 @@
+---
+description: Phase 10.6 guardrails for coordinator LangGraph workflow and parallel specialist execution.
+globs:
+  - "agents/coordinator/**"
+  - "agents/shared/**"
+  - "agents/sales/**"
+  - "agents/content/**"
+  - "agents/support/**"
+  - "backend/**"
+  - "requirements*.txt"
+  - "pyproject.toml"
+  - "docker-compose.yml"
+  - "docker-compose.override.yml"
+  - ".env.example"
+  - "docs/phases/step-10.6.md"
+alwaysApply: false
+---
+
+# Phase 10.6 — LangGraph Workflow & Parallel Specialist Execution
+
+This rule applies only to Phase 10.6: adding/completing a real LangGraph workflow in the coordinator-agent and executing specialist nodes in parallel where practical.
+
+## Scope
+
+Implement the coordinator daily-report workflow as a real LangGraph graph with these logical nodes:
+
+* `fetch_context`
+* `run_sales`
+* `run_content`
+* `run_support`
+* `merge`
+* `submit`
+
+The graph must preserve all previous Phase 10 behavior:
+
+* Step 10.1 star topology
+* Step 10.2 per-node timeouts
+* Step 10.3 AgentOutput persistence
+* Step 10.4 mock integration behavior
+* Step 10.5 real coordinator endpoint and Celery completion wiring
+
+## Required behavior
+
+1. Add or complete a real LangGraph workflow in `coordinator-agent`.
+2. Use the existing coordinator state model or a compatible typed state.
+3. Represent the planned workflow nodes as LangGraph nodes or clearly documented equivalents.
+4. Execute `run_sales`, `run_content`, and `run_support` in parallel where practical.
+5. Preserve coordinator-only orchestration:
+
+   * coordinator calls sales/content/support
+   * sales/content/support do not call each other
+6. Preserve per-node timeout boundaries from Step 10.2.
+7. Preserve AgentOutput persistence from Step 10.3.
+8. Preserve final report submission behavior from Step 10.5.
+9. Preserve partial-failure behavior:
+
+   * specialist failures/timeouts become structured warnings where appropriate
+   * successful specialist outputs still flow into merge/submit
+10. Keep the public coordinator endpoint contract stable unless a minimal compatibility change is required.
+11. Do not auto-approve or execute actions.
+12. Do not introduce direct DB access from agents.
+13. Do not hardcode Prestia-specific business logic.
+
+## Non-goals
+
+* No Step 10.7 DB-backed final E2E closure in this step.
+* No frontend/dashboard work.
+* No Phase 12 Prestia demo polish.
+* No real LLM calls.
+* No real Instagram publishing/sending.
+* No external side effects.
+* No agent-to-agent mesh.
+* No broad rewrite of specialist agents.
+* No raw PII, prompts, JWTs, Authorization headers, or full payload logging.
+
+## Testing requirements
+
+Add deterministic tests for:
+
+* LangGraph graph creation/compilation
+* graph contains or represents `fetch_context`, `run_sales`, `run_content`, `run_support`, `merge`, `submit`
+* specialist fan-out/fan-in or parallel execution behavior
+* timeout behavior still applies under graph execution
+* AgentOutput persistence still works under graph execution
+* partial specialist failure still produces `warnings[]`
+* star topology remains enforced
+* Step 10.5 endpoint can run the graph-backed workflow
+* no real LLM API keys or live external services required
+
+Existing Phase 10 tests from 10.1–10.5 must remain passing or be minimally updated to the new graph-backed workflow contract.
+
+## Documentation requirements
+
+Create:
+
+docs/phases/step-10.6.md
+
+The document must include:
+
+* Step goal
+* Scope
+* Non-goals
+* LangGraph design
+* Graph node list and responsibilities
+* Parallel/fan-out/fan-in behavior
+* How previous Phase 10 behavior was preserved
+* Timeout behavior
+* AgentOutput persistence behavior
+* Partial failure behavior
+* Files changed
+* Tests added
+* Verification commands and results
+* Known limitations
+* Explicit confirmation that Step 10.7 DB-backed final E2E closure was not implemented

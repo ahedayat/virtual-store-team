@@ -1,17 +1,9 @@
-"""Sequential coordinator daily report workflow runner (Step 10.2)."""
+"""Coordinator daily report workflow runner (Step 10.2, graph-backed in 10.6)."""
 
 from __future__ import annotations
 
-from agents.coordinator.nodes import (
-    WORKFLOW_NODE_EXECUTORS,
-    WorkflowNodeDependencies,
-    node_fetch_context,
-    node_merge,
-    node_run_content,
-    node_run_sales,
-    node_run_support,
-    node_submit,
-)
+from agents.coordinator.graph import invoke_daily_report_graph
+from agents.coordinator.nodes import WORKFLOW_NODE_EXECUTORS, WorkflowNodeDependencies
 from agents.coordinator.state import DailyReportWorkflowState
 from agents.coordinator.workflow import DAILY_REPORT_WORKFLOW_NODES
 
@@ -20,22 +12,8 @@ def run_daily_report_workflow(
     state: DailyReportWorkflowState,
     deps: WorkflowNodeDependencies | None = None,
 ) -> DailyReportWorkflowState:
-    """Execute coordinator workflow nodes in star-topology order with timeout boundaries."""
-    dependencies = deps or WorkflowNodeDependencies()
-
-    state = node_fetch_context(state, dependencies)
-    if state.failed:
-        return state
-
-    state = node_run_sales(state, dependencies)
-    state = node_run_content(state, dependencies)
-    state = node_run_support(state, dependencies)
-
-    state = node_merge(state, dependencies)
-    if state.failed:
-        return state
-
-    return node_submit(state, dependencies)
+    """Execute the LangGraph-backed coordinator workflow with timeout boundaries."""
+    return invoke_daily_report_graph(state, deps)
 
 
 def list_workflow_node_executors() -> tuple[str, ...]:

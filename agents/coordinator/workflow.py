@@ -7,9 +7,9 @@ peer-to-peer between specialist agents.
 Step 10.2 adds executable node handlers with per-node timeout boundaries in
 ``agents.coordinator.nodes`` and ``agents.coordinator.runner``. Step 10.3 adds
 intermediate AgentOutput persistence via the shared Django client. Step 10.4 adds
-full-graph integration tests with in-process specialist apps and mock LLM. Step 10.5
-wires ``POST /workflows/daily-report`` to ``run_daily_report_workflow()``. LangGraph
-graph wiring remains deferred.
+full-graph integration tests with in-process specialist apps and mock LLM. Step 10.5 wires ``POST /workflows/daily-report`` to ``run_daily_report_workflow()``.
+Step 10.6 compiles the daily-report workflow as a LangGraph graph with parallel
+specialist fan-out/fan-in in ``agents.coordinator.graph``.
 """
 
 from __future__ import annotations

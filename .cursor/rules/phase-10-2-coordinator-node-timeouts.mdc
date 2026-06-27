@@ -1,0 +1,81 @@
+---
+description: Phase 10.2 guardrails for coordinator LangGraph per-node timeouts.
+globs:
+  - "agents/coordinator/**"
+  - "agents/shared/**"
+  - ".env.example"
+  - "docker-compose.yml"
+  - "docker-compose.override.yml"
+  - "docs/phases/step-10.2.md"
+alwaysApply: false
+---
+
+# Phase 10.2 — Coordinator Node Timeout Guardrails
+
+This rule applies only to Phase 10.2: per-node timeout handling in the coordinator-agent LangGraph workflow.
+
+## Scope
+
+Implement timeout protection for coordinator workflow nodes:
+
+* fetch_context
+* run_sales
+* run_content
+* run_support
+* merge
+* submit
+
+Specialist agent calls may be parallelized if the existing implementation already supports it, but this step must not introduce an agent mesh. The coordinator remains the only service that calls sales-agent, content-agent, and support-agent.
+
+## Required behavior
+
+1. Every coordinator node must have a deterministic timeout boundary.
+2. Timeout values must be configurable through environment variables with safe defaults.
+3. Invalid, missing, zero, or negative timeout values must fall back to safe defaults.
+4. Specialist agent node timeouts must not crash the entire workflow when partial-report behavior is possible.
+5. A timed-out specialist node must produce a structured warning in coordinator state/report data.
+6. Critical node timeouts, such as context fetch or final report submit, must fail safely with a sanitized error.
+7. Timeout errors must not expose raw payload bodies, customer PII, prompts, tokens, service JWTs, or full HTTP responses in logs or returned warnings.
+8. Correlation identifiers such as report_run_id and request_id may be logged.
+9. The coordinator must not auto-approve, execute, or mutate actions as part of timeout handling.
+10. Step 10.2 must not implement Step 10.3 intermediate AgentOutput persistence unless the existing code already has it and only needs to preserve behavior.
+
+## Architecture constraints
+
+* Django remains the source of truth.
+* Agents must not access the database directly.
+* The coordinator must use HTTP and existing shared clients/schemas where available.
+* Keep Phase 10.1 star topology intact.
+* Do not introduce direct sales-agent → content-agent, sales-agent → support-agent, or content-agent → support-agent calls.
+* Do not add real external side effects.
+
+## Testing requirements
+
+Add deterministic tests for:
+
+* A node completing before timeout.
+* A node exceeding timeout.
+* Specialist agent timeout converted into a structured warning.
+* Critical node timeout handled as a safe workflow failure.
+* Timeout values loaded from env/config.
+* Invalid timeout env values falling back to defaults.
+* HTTP calls receiving the expected timeout value where applicable.
+* No real LLM keys or live external services required.
+
+## Documentation requirements
+
+Create or update:
+
+`docs/phases/step-10.2.md`
+
+The document must include:
+
+* Step goal.
+* Scope and non-goals.
+* Timeout configuration variables and defaults.
+* Implementation summary.
+* Files changed.
+* Tests added.
+* Verification commands and results.
+* Known limitations.
+* Confirmation that Step 10.3 intermediate AgentOutput persistence was not implemented in this step.

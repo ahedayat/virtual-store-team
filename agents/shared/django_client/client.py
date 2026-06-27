@@ -183,6 +183,22 @@ class DjangoClient:
             params=params or None,
         )
 
+    def get_context_bundle(self, report_run_id: str) -> dict[str, Any]:
+        """Fetch sanitized context bundle for a report run."""
+        return self.get(f"/internal/ai/context/{report_run_id}/")
+
+    def complete_report_run(
+        self,
+        report_run_id: str,
+        *,
+        report: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Complete a report run via ``POST /internal/ai/report-runs/{id}/complete/``."""
+        return self.post(
+            f"/internal/ai/report-runs/{report_run_id}/complete/",
+            json={"report": report},
+        )
+
     def _request(
         self,
         method: str,

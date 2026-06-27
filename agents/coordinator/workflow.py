@@ -1,11 +1,13 @@
-"""Daily report workflow scaffold — star topology only (Step 10.1).
+"""Daily report workflow scaffold — star topology (Step 10.1) and node timeouts (10.2).
 
 The coordinator-agent is the sole orchestrator. Specialist runs are initiated
 only from coordinator workflow nodes via ``SpecialistAgentClient`` — never
 peer-to-peer between specialist agents.
 
-Full LangGraph node behavior, timeouts, persistence, merge, and submit are
-deferred to later Phase 10 steps.
+Step 10.2 adds executable node handlers with per-node timeout boundaries in
+``agents.coordinator.nodes`` and ``agents.coordinator.runner``. LangGraph graph
+wiring, intermediate AgentOutput persistence (10.3), and full integration tests
+(10.4) remain deferred.
 """
 
 from __future__ import annotations

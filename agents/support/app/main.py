@@ -8,8 +8,14 @@ import os
 from fastapi import FastAPI, Header, HTTPException
 
 from agents.shared.django_client import DjangoClient
+from agents.shared.django_client.errors import DjangoClientError, DjangoHTTPError
+from agents.shared.schemas.base import AgentWarning
 from agents.shared.schemas.errors import AgentSchemaValidationError
-from agents.shared.schemas.support import SupportRunResponse
+from agents.shared.schemas.support import SupportInsights, SupportRunResponse
+from agents.support.action_mapping import (
+    SupportActionMappingError,
+    persist_support_actions,
+)
 from agents.support.analysis import run_support_analysis
 from agents.support.app.schemas import SupportRunRequest
 from agents.support.validation import (
@@ -62,6 +68,10 @@ def _build_django_client(
     return DjangoClient(service_token=token, request_id=request_id)
 
 
+def _append_warning(result: SupportInsights, warning: AgentWarning) -> SupportInsights:
+    return result.model_copy(update={"warnings": list(result.warnings) + [warning]})
+
+
 @app.post("/run", response_model=SupportRunResponse)
 def run_support_agent(
     payload: SupportRunRequest,
@@ -78,6 +88,8 @@ def run_support_agent(
             "channel": payload.channel,
             "request_id": request_id,
             "fetch_recent_messages": payload.fetch_recent_messages,
+            "persist_actions": payload.persist_actions,
+            "dry_run": payload.dry_run,
         },
     )
 
@@ -86,12 +98,11 @@ def run_support_agent(
         service_token = authorization.removeprefix("Bearer ").strip()
 
     django_client = None
-    if payload.fetch_recent_messages or payload.context is not None or payload.message_threads is not None:
-        if payload.fetch_recent_messages:
-            django_client = _build_django_client(
-                service_token=service_token,
-                request_id=request_id,
-            )
+    if payload.fetch_recent_messages or payload.persist_actions:
+        django_client = _build_django_client(
+            service_token=service_token,
+            request_id=request_id,
+        )
 
     try:
         insights = run_support_analysis(
@@ -108,6 +119,63 @@ def run_support_agent(
             django_client=django_client,
             fetch_recent_messages=payload.fetch_recent_messages,
         )
+
+        if payload.persist_actions:
+            if django_client is None:
+                insights = _append_warning(
+                    insights,
+                    AgentWarning(
+                        code="support_action_persistence_skipped",
+                        message=(
+                            "Action persistence requested but no Django client "
+                            "could be configured."
+                        ),
+                    ),
+                )
+            else:
+                try:
+                    mapped_or_persisted = persist_support_actions(
+                        insights,
+                        django_client=django_client,
+                        report_run_id=payload.report_run_id,
+                        dry_run=payload.dry_run,
+                    )
+                    if payload.dry_run:
+                        insights = _append_warning(
+                            insights,
+                            AgentWarning(
+                                code="dry_run",
+                                message=(
+                                    f"{len(mapped_or_persisted)} support action(s) mapped "
+                                    "but not persisted."
+                                ),
+                            ),
+                        )
+                except SupportActionMappingError as exc:
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "code": "support_action_mapping_failed",
+                            "message": str(exc),
+                        },
+                    ) from None
+                except DjangoHTTPError:
+                    insights = _append_warning(
+                        insights,
+                        AgentWarning(
+                            code="support_action_persistence_failed",
+                            message="Support action persistence failed.",
+                        ),
+                    )
+                except DjangoClientError:
+                    insights = _append_warning(
+                        insights,
+                        AgentWarning(
+                            code="support_action_persistence_failed",
+                            message="Support action persistence failed.",
+                        ),
+                    )
+
         for warning in insights.warnings:
             logger.warning(
                 "Support analysis warning",

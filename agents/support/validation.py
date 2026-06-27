@@ -106,6 +106,7 @@ def support_insights_to_run_response(
             confidence=1.0,
             requires_human_review=False,
             request_id=resolved_request_id,
+            warnings=list(insights.warnings),
         )
 
     requires_human_review = any(draft.requires_approval for draft in insights.reply_drafts)
@@ -119,6 +120,7 @@ def support_insights_to_run_response(
         confidence=confidence,
         requires_human_review=requires_human_review,
         request_id=resolved_request_id,
+        warnings=list(insights.warnings),
     )
 
 

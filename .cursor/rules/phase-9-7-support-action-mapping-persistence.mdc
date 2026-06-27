@@ -1,0 +1,181 @@
+---
+description: Phase 9.7 — Map validated Support Agent reply drafts/escalations to Django-compatible actions with optional persistence
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/django_client/**/*.py"
+  - "agents/shared/schemas/support.py"
+  - "docs/phases/step-9.7.md"
+alwaysApply: false
+---
+
+# Phase 9.7 — Support Action Mapping and Django Persistence
+
+This rule applies when working on Phase 9.7 / Support Action Mapping and Django Persistence.
+
+## Scope
+
+Step 9.7 is limited to **mapping validated `SupportReplyDraft` items to Django-compatible action payloads** and **optionally persisting them through the internal action workflow** (`POST /internal/ai/actions/`).
+
+Recommended locations:
+
+* `agents/support/action_mapping.py` — map drafts to action payloads; optional persistence helpers
+* `agents/shared/django_client/client.py` — reuse `create_action()` (Step 6.2 / Phase 4.3)
+* `agents/support/tests/test_action_mapping.py` (or equivalent)
+* `agents/support/app/main.py` — wire optional persistence into `/run` only if consistent with Sales/Content Agent patterns
+* `agents/support/analysis.py` — minimal hooks only if needed to attach mapped actions or persistence warnings
+* `docs/phases/step-9.7.md` — step documentation
+
+Reuse existing modules:
+
+* Step 9.1 approval policy metadata (`requires_approval`, `matched_policy_code`, `risk_level`, `safety_notes`)
+* Step 9.2 refusal/scope behavior (do not redesign)
+* Step 9.3 prompt-injection guardrails (do not redesign)
+* Step 9.4 `SupportInsights` / `SupportReplyDraft` schema validation (do not redesign unless a tiny compatibility adjustment is required)
+* Step 9.5 sanitized thread context behavior (do not redesign)
+* Step 9.6 runtime pipeline output (`run_support_analysis()` / validated `SupportInsights`)
+* Sales Agent (`agents/sales/action_mapping.py`) and Content Agent (`agents/content/action_mapping.py`) mapping/persistence patterns
+* Shared `DjangoClient.create_action()` → `POST /internal/ai/actions/`
+
+## Rules
+
+1. Map valid `SupportReplyDraft` items from validated `SupportInsights` to Django-compatible internal action request bodies.
+
+2. Only support these action types:
+
+   * `support.reply_draft`
+   * `support.escalate`
+
+3. Include **safe payload fields only**. Map manager-review metadata from the draft without introducing customer PII, raw message bodies, secrets, or untrusted tenant/store identifiers in payloads.
+
+4. **Preserve Step 9.1 approval policy metadata** when mapping (`requires_approval`, `matched_policy_code`, `risk_level`, `safety_notes`, and related policy fields). Do not auto-approve or override approval-required drafts.
+
+5. **Preserve Step 9.2 refusal/scope behavior.** Do not map unsafe refusal output into executable customer-contact actions.
+
+6. **Preserve Step 9.3 prompt-injection protections.** Do not redesign injection guardrails unless a tiny compatibility adjustment is required.
+
+7. **Preserve Step 9.4 `SupportInsights` and `SupportReplyDraft` schema validation.** Mapping must consume already-validated drafts; do not bypass the validation gate.
+
+8. **Preserve Step 9.5 sanitized thread context behavior** and **Step 9.6 runtime pipeline behavior.** Do not redesign thread fetch, merge, or analysis pipeline unless a tiny compatibility adjustment is required.
+
+9. Support **`dry_run` mode** so tests and local runs can produce mapped payloads **without POSTing to Django**.
+
+10. Persist through the shared **`DjangoClient`** and **`POST /internal/ai/actions/`** only when persistence is **explicitly requested** (for example `persist_actions=True` on `/run` or an explicit persist helper call).
+
+11. **Persistence failure must add safe warnings** and **must not discard** the validated `SupportInsights` result. Follow Sales/Content Agent conventions (for example warning codes such as `action_persistence_failed`, `action_persistence_skipped`, or `dry_run`).
+
+12. Use the internal actions endpoint convention:
+
+    * `POST /internal/ai/actions/`
+
+13. Tenant and store scope must come from the **service JWT on `DjangoClient`**, not from untrusted fields in mapped payloads (Phase 4.3 convention).
+
+14. Preserve **`report_run_id`** scoping when provided (mapper argument or `SupportInsights.metadata.report_run_id`).
+
+15. For `support.reply_draft`, preserve **`requires_approval`** and low-risk semantics expected by Django action policy (Step 4.1). Do not force all support drafts to approval-required if Step 9.1 classified a draft as auto-executable low-risk.
+
+16. For `support.escalate`, mapped actions must remain **approval-required**.
+
+17. Do **not** log full message bodies, reply draft bodies, or raw payload bodies at INFO level.
+
+18. Do **not** introduce raw PII into fixtures, tests, docs, logs, or payload examples.
+
+### Mapping flow (expected)
+
+1. Start from validated `SupportInsights` (Step 9.6 output).
+2. For each `reply_drafts[]` item, map to a Django internal action request body.
+3. Reject unsupported `action_type` values with a clear mapping error.
+4. When `dry_run=True`, return mapped payloads only.
+5. When persistence is explicitly requested and `dry_run=False`, POST each mapped action via `DjangoClient.create_action()`.
+6. On persistence failure, append safe warnings to the result; return the original validated `SupportInsights`.
+
+### Recommended entry points
+
+| Function | Purpose |
+|----------|---------|
+| `map_support_reply_draft_to_action_payload(draft, *, report_run_id=None)` | Map one validated draft to a Django internal action request body |
+| `map_support_insights_to_actions(insights, *, report_run_id=None)` | Map all drafts in a `SupportInsights` object |
+| `persist_support_actions(insights, *, django_client, report_run_id=None, agent_output_id=None, dry_run=False)` | Map and optionally POST actions to Django |
+
+Raise a dedicated mapping error (for example `SupportActionMappingError`) for unsupported types or missing required mapping fields.
+
+### Data and tenancy
+
+* Mapped payloads remain tenant/store scoped through existing service JWT conventions on `DjangoClient`.
+* No raw PII may be logged, included in test snapshots, fixtures, or examples.
+* Tenant and store data must remain generic. Do not hardcode Prestia-specific business rules.
+* Tests must use mocks/fixtures and must not require external services.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Step 9.8** — final acceptance proof or closure (`docs/examples/support_output.json`)
+* Sending customer messages directly
+* Sending Instagram DMs
+* Executing refunds
+* Canceling or mutating orders
+* Handling payments
+* Changing prices or inventory
+* Publishing content
+* Real external side effects of any kind
+* Real LLM API calls or provider SDK usage
+* Direct database access from agents
+* Coordinator / LangGraph orchestration
+* Frontend dashboard changes
+* Redesign of Step 9.1–9.6 behavior (except tiny compatibility adjustments)
+
+Also out of scope unless strictly needed for mapping/persistence:
+
+* `docs/examples/support_output.json` — leave for Step 9.8 unless an existing repository convention requires it before closure
+* Auto-execution of queued actions in Django
+* Prestia-specific hardcoded business logic
+
+## Testing expectations
+
+The final implementation must include **focused tests** proving:
+
+* Valid `support.reply_draft` and `support.escalate` drafts map to Django-compatible action payloads
+* Unsupported action types are rejected by the mapper
+* Step 9.1 approval metadata (`requires_approval`, `matched_policy_code`, `risk_level`, `safety_notes`) is preserved in mapped payloads
+* `dry_run=True` returns mapped payloads without POSTing to Django
+* Explicit persistence POSTs to `POST /internal/ai/actions/` via mocked `DjangoClient`
+* Persistence failure surfaces safe warnings without discarding validated `SupportInsights`
+* Mapped payloads contain safe fields only — no raw PII in tests or examples
+* Optional `/run` persistence wiring (if added) follows Sales/Content Agent patterns
+
+Use synthetic, sanitized fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.7.md`
+
+The document must explain:
+
+* Goal and scope of support action mapping and optional Django persistence
+* Supported action types (`support.reply_draft`, `support.escalate`)
+* Mapping entry points and payload shape
+* `dry_run` vs explicit persistence behavior
+* `POST /internal/ai/actions/` integration via `DjangoClient.create_action()`
+* Persistence failure warning behavior (validated `SupportInsights` preserved)
+* Preservation of Step 9.1–9.6 behavior (not redesigned)
+* Files changed
+* Tests added
+* Validation commands
+* Known limitations and deferred work (Step 9.8)
+
+## Acceptance criteria
+
+* Validated `SupportReplyDraft` items map to Django-compatible action payloads
+* Only `support.reply_draft` and `support.escalate` are supported
+* Mapped payloads use safe fields only; Step 9.1 approval metadata is preserved
+* Step 9.2 refusal, Step 9.3 prompt-injection, Step 9.4 schema validation, Step 9.5 sanitized context, and Step 9.6 runtime pipeline behavior are preserved
+* `dry_run` mode produces mapped payloads without POSTing to Django
+* Persistence uses shared `DjangoClient` and `POST /internal/ai/actions/` only when explicitly requested
+* Persistence failure adds safe warnings and does not discard validated `SupportInsights`
+* Focused deterministic tests cover mapping, dry-run, persistence, and failure paths without real LLM API keys or external services
+* No customer contact, Instagram DMs, refunds, order mutation, payments, pricing/inventory changes, publishing, real external side effects, direct DB access, or Prestia-specific hardcoding
+* No full message bodies or raw payload bodies logged at INFO level; no raw PII in fixtures/logs
+* Step 9.8 acceptance proof and `docs/examples/support_output.json` are not implemented in this step
+* `docs/phases/step-9.7.md` documents the implementation

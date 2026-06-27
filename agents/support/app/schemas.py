@@ -21,4 +21,6 @@ class SupportRunRequest(StrictAgentModel):
     context: dict[str, Any] | None = None
     message_threads: list[dict[str, Any]] | None = None
     fetch_recent_messages: bool = False
+    persist_actions: bool = False
+    dry_run: bool = False
     service_token: str | None = None

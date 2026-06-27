@@ -6,7 +6,7 @@ from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
-from agents.shared.schemas.base import BaseAgentResponse, StrictAgentModel
+from agents.shared.schemas.base import AgentWarning, BaseAgentResponse, StrictAgentModel
 
 SupportMessageSenderRole = Literal["customer", "store", "staff", "system"]
 
@@ -177,3 +177,4 @@ class SupportRunResponse(StrictAgentModel):
     confidence: float = Field(ge=0.0, le=1.0)
     requires_human_review: bool
     request_id: str | None = None
+    warnings: list[AgentWarning] = Field(default_factory=list)

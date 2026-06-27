@@ -5,9 +5,9 @@ only from coordinator workflow nodes via ``SpecialistAgentClient`` — never
 peer-to-peer between specialist agents.
 
 Step 10.2 adds executable node handlers with per-node timeout boundaries in
-``agents.coordinator.nodes`` and ``agents.coordinator.runner``. LangGraph graph
-wiring, intermediate AgentOutput persistence (10.3), and full integration tests
-(10.4) remain deferred.
+``agents.coordinator.nodes`` and ``agents.coordinator.runner``. Step 10.3 adds
+intermediate AgentOutput persistence via the shared Django client. LangGraph graph
+wiring and full integration tests (10.4) remain deferred.
 """
 
 from __future__ import annotations

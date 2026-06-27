@@ -45,7 +45,7 @@ from agents.coordinator.workflow import (
     WORKFLOW_NODE_FETCH_CONTEXT,
     WORKFLOW_NODE_RUN_SALES,
 )
-from agents.shared.django_client import DjangoClient
+from agents.shared.django_client import DjangoClient, DjangoHTTPError
 from agents.shared.schemas.base import AgentWarning
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -69,14 +69,20 @@ class _MockDjangoClient:
         context_payload: dict[str, Any] | None = None,
         submit_payload: dict[str, Any] | None = None,
         timeout_seconds: float | None = None,
+        agent_output_fail: bool = False,
     ) -> None:
         self.context_delay = context_delay
         self.submit_delay = submit_delay
         self.context_payload = context_payload or {"report_run_id": "run-1", "store": {}}
         self.submit_payload = submit_payload or {"status": "completed"}
         self.timeout_seconds = timeout_seconds
+        self.agent_output_fail = agent_output_fail
         self.context_calls = 0
         self.submit_calls = 0
+        self.agent_output_calls = 0
+        self.last_agent_output_body: dict[str, Any] | None = None
+        self.last_submit_agent_output_ids: list[str] | None = None
+        self._agent_output_counter = 0
 
     def get_context_bundle(self, report_run_id: str) -> dict[str, Any]:
         self.context_calls += 1
@@ -84,13 +90,28 @@ class _MockDjangoClient:
             time.sleep(self.context_delay)
         return {**self.context_payload, "report_run_id": report_run_id}
 
+    def create_agent_output(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.agent_output_calls += 1
+        self.last_agent_output_body = payload
+        if self.agent_output_fail:
+            raise DjangoHTTPError(500, "Agent output persistence failed.")
+        self._agent_output_counter += 1
+        return {
+            "id": f"00000000-0000-4000-8000-{self._agent_output_counter:012d}",
+            "agent_name": "coordinator-agent",
+            "output_type": payload.get("output_type"),
+            "report_run_id": payload.get("report_run_id"),
+        }
+
     def complete_report_run(
         self,
         report_run_id: str,
         *,
         report: dict[str, Any],
+        agent_output_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         self.submit_calls += 1
+        self.last_submit_agent_output_ids = agent_output_ids
         if self.submit_delay:
             time.sleep(self.submit_delay)
         return {**self.submit_payload, "report_run_id": report_run_id}
@@ -264,8 +285,9 @@ class CoordinatorNodeTimeoutBehaviorTests(unittest.TestCase):
         self.assertIsNotNone(state.merged_report)
         self.assertIn("sales", state.merged_report["missing_sections"])
         self.assertTrue(state.merged_report["partial"])
-        self.assertEqual(len(state.warnings), 1)
+        self.assertEqual(len(state.warnings), 2)
         self.assertEqual(state.warnings[0].code, "specialist_node_timeout")
+        self.assertEqual(state.warnings[1].code, "agent_output_not_persisted")
 
     def test_partial_workflow_continues_when_specialist_times_out(self) -> None:
         state = _base_state()

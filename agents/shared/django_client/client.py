@@ -157,6 +157,15 @@ class DjangoClient:
         """
         return self.post("/internal/ai/actions/", json=payload)
 
+    def create_agent_output(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist structured agent output via ``POST /internal/ai/agent-outputs/``.
+
+        Tenant and store scope come from the service JWT on the client, not from
+        ``payload``. ``agent_name`` on the created record is set by Django from
+        the authenticated service identity.
+        """
+        return self.post("/internal/ai/agent-outputs/", json=payload)
+
     def get_sales_summary(self, store_id: str) -> dict[str, Any]:
         """Fetch store sales summary from ``GET /internal/ai/stores/{id}/sales/summary/``."""
         return self.get(f"/internal/ai/stores/{store_id}/sales/summary/")
@@ -192,11 +201,15 @@ class DjangoClient:
         report_run_id: str,
         *,
         report: dict[str, Any],
+        agent_output_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Complete a report run via ``POST /internal/ai/report-runs/{id}/complete/``."""
+        body: dict[str, Any] = {"report": report}
+        if agent_output_ids:
+            body["agent_output_ids"] = agent_output_ids
         return self.post(
             f"/internal/ai/report-runs/{report_run_id}/complete/",
-            json={"report": report},
+            json=body,
         )
 
     def _request(

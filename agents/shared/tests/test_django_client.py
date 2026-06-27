@@ -240,6 +240,49 @@ class RetryBehaviorTests(unittest.TestCase):
         )
 
 
+class CreateAgentOutputTests(unittest.TestCase):
+    def test_create_agent_output_posts_to_internal_endpoint(self):
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["method"] = request.method
+            captured["path"] = request.url.path
+            captured["json"] = json.loads(request.content.decode("utf-8"))
+            return httpx.Response(
+                201,
+                json={
+                    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    "agent_name": "coordinator-agent",
+                    "output_type": "sales_analysis",
+                    "report_run_id": "11111111-1111-4111-8111-111111111111",
+                },
+            )
+
+        client = self._build_client(handler, service_token="coord-jwt", request_id="req-1")
+        payload = {
+            "output_type": "sales_analysis",
+            "payload": {"summary": "ok"},
+            "report_run_id": "11111111-1111-4111-8111-111111111111",
+        }
+
+        response = client.create_agent_output(payload)
+
+        self.assertEqual(captured["method"], "POST")
+        self.assertEqual(captured["path"], "/internal/ai/agent-outputs/")
+        self.assertEqual(captured["json"], payload)
+        self.assertEqual(response["id"], "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+
+    def _build_client(self, handler, **kwargs) -> DjangoClient:
+        transport = httpx.MockTransport(handler)
+        http_client = httpx.Client(transport=transport)
+        return DjangoClient(
+            base_url="http://backend:8000",
+            max_retries=0,
+            http_client=http_client,
+            **kwargs,
+        )
+
+
 class EnvironmentConfigurationTests(unittest.TestCase):
     def test_reads_client_settings_from_environment(self):
         env = {

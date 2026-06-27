@@ -21,6 +21,7 @@ class DailyReportWorkflowState:
     sales_output: dict[str, Any] | None = None
     content_output: dict[str, Any] | None = None
     support_output: dict[str, Any] | None = None
+    agent_outputs_ref: list[str] = field(default_factory=list)
     merged_report: dict[str, Any] | None = None
     submit_result: dict[str, Any] | None = None
     warnings: list[AgentWarning] = field(default_factory=list)

@@ -1,0 +1,96 @@
+---
+description: Phase 10.3 guardrails for coordinator intermediate AgentOutput persistence.
+globs:
+  - "agents/coordinator/**"
+  - "agents/shared/**"
+  - "docs/phases/step-10.3.md"
+  - ".env.example"
+alwaysApply: false
+---
+
+# Phase 10.3 — Coordinator AgentOutput Persistence Guardrails
+
+This rule applies only to Phase 10.3: persisting intermediate `AgentOutput` records from the coordinator-agent through the Django internal API.
+
+## Scope
+
+Implement coordinator-side persistence of intermediate specialist agent outputs through Django:
+
+* sales-agent output
+* content-agent output
+* support-agent output
+* structured timeout/failure outputs when project conventions support persisting them safely
+
+The coordinator must use Django internal APIs only. The intended endpoint is:
+
+* `POST /internal/ai/agent-outputs/`
+
+## Required behavior
+
+1. Persist intermediate `AgentOutput` records after specialist agent nodes complete.
+2. Use the shared Django client or the smallest compatible extension to it.
+3. Include safe metadata:
+
+   * tenant/store scope must come from the service JWT or trusted workflow context, not from untrusted agent payloads
+   * `report_run_id`
+   * `agent_name`
+   * structured output payload
+   * status or warning metadata if supported by existing backend contract
+4. Capture returned `agent_output_id` values in coordinator workflow state.
+5. Include persisted output references in the final report payload as `agent_outputs_ref`.
+6. Persistence failure must be handled safely:
+
+   * do not lose the agent result if partial report generation can continue
+   * add a structured warning to coordinator state/report
+   * do not expose raw payloads, prompts, JWTs, headers, or PII in logs or warnings
+7. Preserve Step 10.1 star topology.
+8. Preserve Step 10.2 per-node timeout behavior.
+9. Do not implement Step 10.4 full cross-service integration test in this step.
+10. Do not add direct DB access from agents.
+11. Do not create new Django models unless absolutely required by an existing mismatch. Prefer using the Phase 4 `AgentOutput` model and internal API.
+
+## Non-goals
+
+* No real external side effects.
+* No frontend changes.
+* No dashboard UI changes.
+* No new approval workflow behavior.
+* No auto-approval or auto-execution of actions.
+* No agent-to-agent mesh.
+* No full E2E mock-LLM-across-services test; that belongs to Step 10.4.
+* No raw PII logging or prompt/body dumping.
+
+## Testing requirements
+
+Add deterministic tests for:
+
+* successful sales/content/support AgentOutput persistence
+* returned `agent_output_id` captured in coordinator state
+* final report payload includes `agent_outputs_ref`
+* persistence failure creates a structured warning without crashing partial report generation when appropriate
+* timeout/failure agent results are either persisted safely or skipped with documented warning according to existing conventions
+* no persistence attempt uses untrusted tenant/store IDs from agent payloads
+* Step 10.1 star topology remains intact
+* Step 10.2 timeout behavior remains intact
+
+Tests must not require real LLM keys or live external services.
+
+## Documentation requirements
+
+Create:
+
+`docs/phases/step-10.3.md`
+
+The document must include:
+
+* Step goal
+* Scope
+* Non-goals
+* Implementation summary
+* AgentOutput payload contract used by the coordinator
+* Persistence failure behavior
+* Files changed
+* Tests added
+* Verification commands and results
+* Known limitations
+* Explicit confirmation that Step 10.4 full graph integration testing was not implemented

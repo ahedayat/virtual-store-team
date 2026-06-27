@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from agents.coordinator.agent_output_persistence import (
+    build_agent_output_not_persisted_warning,
+    persist_specialist_agent_output,
+)
 from agents.coordinator.config import CoordinatorNodeTimeouts, load_coordinator_node_timeouts
 from agents.coordinator.specialist_clients import SpecialistAgentClient
 from agents.coordinator.state import DailyReportWorkflowState
@@ -126,6 +130,28 @@ def node_fetch_context(
     return state
 
 
+def _persist_specialist_output(
+    state: DailyReportWorkflowState,
+    deps: WorkflowNodeDependencies,
+    *,
+    node_name: str,
+    output: dict[str, Any],
+) -> None:
+    timeouts = deps.resolve_timeouts()
+    timeout_seconds = timeouts.timeout_for_node(node_name)
+    client = deps.build_django_client(timeout_seconds, state)
+    result = persist_specialist_agent_output(
+        django_client=client,
+        report_run_id=state.report_run_id,
+        node_name=node_name,
+        specialist_output=output,
+    )
+    if result.persisted and result.agent_output_id is not None:
+        state.agent_outputs_ref.append(result.agent_output_id)
+    elif result.warning is not None:
+        state.warnings.append(result.warning)
+
+
 def _run_specialist_node(
     state: DailyReportWorkflowState,
     deps: WorkflowNodeDependencies,
@@ -151,10 +177,12 @@ def _run_specialist_node(
             service_name=node_name,
         )
         setattr(state, output_field, output)
+        _persist_specialist_output(state, deps, node_name=node_name, output=output)
     except CoordinatorNodeTimeoutError:
         state.warnings.append(
             build_specialist_timeout_warning(node_name, timeout_seconds=timeout_seconds)
         )
+        state.warnings.append(build_agent_output_not_persisted_warning(node_name=node_name))
     return state
 
 
@@ -240,6 +268,7 @@ def node_merge(
             "sections": sections,
             "missing_sections": missing_sections,
             "partial": bool(missing_sections),
+            "agent_outputs_ref": list(state.agent_outputs_ref),
         }
 
     try:
@@ -274,6 +303,7 @@ def node_submit(
         return client.complete_report_run(
             state.report_run_id,
             report=state.merged_report,
+            agent_output_ids=list(state.agent_outputs_ref) or None,
         )
 
     try:

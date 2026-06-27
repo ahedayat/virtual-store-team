@@ -2086,23 +2086,7 @@ Phase 10 — Coordinator & LangGraph may proceed.
 
 **Goal:** End-to-end orchestrated daily report across all agents — coordinator-driven workflow from Celery trigger through specialist agents to Django `ReportRun=completed` and a final `DailyReport`.
 
-**Status:** **Incomplete / partially complete** — subphases **10.1–10.4** are implemented and tested within their narrow documented scopes, but the **Phase 10 final acceptance gate** remains blocked.
-
-**Completed within narrow scope (10.1–10.4):**
-
-- Star topology contract and coordinator-only specialist HTTP calls
-- Per-node timeout boundaries with structured warnings and safe failures
-- Intermediate `AgentOutput` persistence through Django internal APIs
-- Deterministic full-graph integration test using mock LLM and in-process/test-double harness
-
-**Remaining blockers (final gate):**
-
-1. `POST /workflows/daily-report` is still a Phase 6.4 stub and does not run the real coordinator workflow.
-2. Celery still completes `ReportRun` through skeleton fallback instead of coordinator-driven Django report completion with a real `DailyReport`.
-3. There is no real LangGraph dependency or compiled graph yet.
-4. Specialist nodes run sequentially, not in parallel.
-5. Full graph integration currently uses a recording/test double, not real DB-backed Django `ReportRun` / `DailyReport` completion.
-6. Step 10.4 documentation may overstate Phase 10 completion; final closure belongs in Step 10.7 after all criteria pass.
+**Status:** **Complete** — subphases **10.1–10.7** are implemented, tested, and documented. Final DB-backed E2E verification and closure are recorded in `docs/phases/step-10.7.md`.
 
 **Deliverables:**
 
@@ -2119,126 +2103,27 @@ Phase 10 — Coordinator & LangGraph may proceed.
 - Partial failure warnings in final report `warnings[]`
 - No coordinator auto-approval or action execution
 
-**Tasks:**
-
-1. Define graph state typed dict and compile LangGraph daily-report workflow.
-2. Implement HTTP calls to specialist agents (star topology only).
-3. Execute sales, content, and support nodes in parallel where practical.
-4. Merge and prioritize actions (dedupe by product/SKU).
-5. Persist intermediate `AgentOutput` records via Django client.
-6. Wire real coordinator endpoint and Celery handoff to coordinator-driven completion.
-7. Error handling: partial failure still produces report with `warnings[]`.
-8. DB-backed E2E verification and Phase 10 closure documentation.
-
 **Subphases:**
-
-#### Completed subphases (10.1–10.4)
 
 | Subphase | Name | Summary | Documentation | Status |
 | -------- | ---- | ------- | ------------- | ------ |
-| **10.1** | Star topology only | Establishes coordinator star-topology contract: coordinator is the only orchestrator calling sales, content, and support agents; no peer agent-to-agent HTTP calls. | `docs/phases/step-10.1.md` | Complete (narrow scope) |
-| **10.2** | Timeout per node | Adds configurable per-node timeout boundaries for all workflow nodes; specialist timeouts become structured warnings; critical node timeouts fail safely. | `docs/phases/step-10.2.md` | Complete (narrow scope) |
-| **10.3** | Persist intermediate AgentOutput records via Django client | Persists sales/content/support outputs through `POST /internal/ai/agent-outputs/`, captures `agent_output_id` values in coordinator state, and includes `agent_outputs_ref` in the final report payload. | `docs/phases/step-10.3.md` | Complete (narrow scope) |
-| **10.4** | Integration test: full graph with mock LLM across services | Deterministic integration harness for `run_daily_report_workflow()` with mock LLM specialists and Django test double; proves merge, warnings, star topology, and AgentOutput persistence — but not real endpoint wiring, LangGraph, parallelism, or DB-backed completion. | `docs/phases/step-10.4.md` | Complete (narrow scope) |
-
-#### Remaining subphases (10.5–10.7)
-
-**10.5 — Real Coordinator Endpoint & Celery Completion Wiring**
-
-*Scope:*
-
-- Replace the stub `POST /workflows/daily-report` behavior with real workflow execution.
-- Map request payload into coordinator workflow state.
-- Forward service JWT and correlation ID into workflow/Django client.
-- Ensure coordinator submits final report through Django internal report completion API.
-- Align Celery report-generation task so it no longer masks coordinator incompleteness through skeleton fallback.
-- Add focused tests for real endpoint workflow invocation and Celery/coordinator handoff.
-
-*Expected deliverables:*
-
-- Real coordinator endpoint wired to `run_daily_report_workflow()` or equivalent.
-- Safe request/response schema.
-- Celery/coordinator handoff behavior corrected.
-- Focused endpoint and task tests.
-- Documentation file to be created during implementation: `docs/phases/step-10.5.md`
-
-*Acceptance criteria:*
-
-- `POST /workflows/daily-report` runs the coordinator workflow, not a stub response.
-- Celery can call coordinator and rely on coordinator-driven Django completion.
-- Safe failures mark `ReportRun` failed or return sanitized error according to existing conventions.
-- No direct DB access from agents.
-- No auto-approval or action execution.
-- Relevant tests pass.
-
-**10.6 — LangGraph Workflow & Parallel Specialist Execution**
-
-*Scope:*
-
-- Add or complete a real LangGraph workflow in coordinator-agent.
-- Represent the planned nodes as graph nodes: `fetch_context`, `run_sales`, `run_content`, `run_support`, `merge`, `submit`.
-- Execute sales/content/support in parallel where possible using LangGraph fan-out/fan-in or the project's chosen concurrency pattern.
-- Preserve Step 10.1 star topology.
-- Preserve Step 10.2 per-node timeouts.
-- Preserve Step 10.3 AgentOutput persistence.
-- Preserve Step 10.4 mock integration behavior.
-- Avoid unnecessary architecture rewrite beyond making the Phase 10 contract true.
-
-*Expected deliverables:*
-
-- LangGraph dependency/configuration if missing.
-- Compiled coordinator daily-report graph.
-- Parallel specialist execution where possible.
-- Tests proving graph shape, node order/dependencies, parallel/fan-out behavior, timeout preservation, and star topology.
-- Documentation file to be created during implementation: `docs/phases/step-10.6.md`
-
-*Acceptance criteria:*
-
-- Coordinator has a real LangGraph workflow.
-- Planned nodes exist as graph nodes or clearly documented equivalents.
-- Specialist nodes are parallelized where practical.
-- Timeout, AgentOutput persistence, and warnings behavior still work.
-- Star topology remains enforced.
-- Relevant tests pass.
-
-**10.7 — DB-backed E2E Verification & Phase 10 Closure**
-
-*Scope:*
-
-- Add final DB-backed integration/E2E verification for Phase 10.
-- Prove the real path: Celery → coordinator endpoint → coordinator graph → sales/content/support mock agents → Django internal APIs → `ReportRun` completed + `DailyReport` created.
-- Use `LLM_PROVIDER=mock` or deterministic mock specialists.
-- Verify real Django persistence where practical.
-- Verify partial specialist failure appears in `warnings[]`.
-- Verify coordinator does not auto-approve or execute actions.
-- Reconcile any earlier Step 10.4 overstatement by documenting final closure only when all criteria pass.
-
-*Expected deliverables:*
-
-- DB-backed integration test or closest reliable test harness using Django test DB.
-- Final Phase 10 verification.
-- Any small contract fixes required by the E2E path.
-- Phase 10 closure documentation: `docs/phases/step-10.7.md`
-
-*Acceptance criteria:*
-
-- Celery task → coordinator → all agents → Django `ReportRun=completed` is proven.
-- `DailyReport` row is created with required sections.
-- Final report contains: `sales_summary`, `prioritized_actions`, `content_suggestions`, `support_insights`, `next_steps`, `agent_outputs_ref`, and `warnings[]` when applicable.
-- Coordinator does not auto-approve or execute actions.
-- Partial specialist failure is documented in `warnings[]`.
-- Relevant Phase 10 tests pass.
-- Phase 10 can be explicitly marked complete only after this step passes.
+| **10.1** | Star topology only | Coordinator is the only orchestrator calling sales, content, and support agents; no peer agent-to-agent HTTP calls. | `docs/phases/step-10.1.md` | Complete |
+| **10.2** | Timeout per node | Configurable per-node timeout boundaries; specialist timeouts become structured warnings; critical node timeouts fail safely. | `docs/phases/step-10.2.md` | Complete |
+| **10.3** | Persist intermediate AgentOutput records via Django client | Persists specialist outputs through `POST /internal/ai/agent-outputs/` and includes `agent_outputs_ref` in the final report payload. | `docs/phases/step-10.3.md` | Complete |
+| **10.4** | Integration test: full graph with mock LLM across services | Deterministic in-process integration harness for `run_daily_report_workflow()` with mock specialists and Django test double. | `docs/phases/step-10.4.md` | Complete |
+| **10.5** | Real coordinator endpoint & Celery completion wiring | `POST /workflows/daily-report` runs the real workflow; Celery relies on coordinator-driven Django completion. | `docs/phases/step-10.5.md` | Complete |
+| **10.6** | LangGraph workflow & parallel specialist execution | Compiled LangGraph daily-report graph with parallel sales/content/support fan-out/fan-in. | `docs/phases/step-10.6.md` | Complete |
+| **10.7** | DB-backed E2E verification & Phase 10 closure | Django test DB + Celery eager + coordinator bridge + real Django internal APIs + mock specialists proves full path to `ReportRun=completed` and `DailyReport` creation. | `docs/phases/step-10.7.md` | Complete |
 
 **Dependencies:** Phases 7, 8, 9
 
 **Final Phase 10 acceptance criteria:**
 
 - Real coordinator endpoint runs workflow (`POST /workflows/daily-report` is not a stub).
-- Real or DB-backed test proves `ReportRun` completion.
+- DB-backed test proves `ReportRun` completion and `DailyReport` creation.
 - LangGraph workflow exists in coordinator-agent.
 - Specialist nodes run in parallel where possible.
-- `DailyReport` contains required sections: `sales_summary`, `prioritized_actions`, `content_suggestions`, `support_insights`, `next_steps`.
+- `DailyReport` contains required sections: `sales_summary`, `prioritized_actions`, `content_suggestions`, `support_insights`, `next_steps`, `agent_outputs_ref`, and `warnings[]` when applicable.
 - `AgentOutput` references are included (`agent_outputs_ref`).
 - Partial failures produce `warnings[]`.
 - Coordinator does not auto-approve or execute actions.
@@ -2247,9 +2132,9 @@ Phase 10 — Coordinator & LangGraph may proceed.
 
 **Phase 10 Completion Gate:**
 
-Phase 10 is **not complete** until subphases **10.5**, **10.6**, and **10.7** are implemented, tested, and documented.
+Phase 10 is **complete**. Phase 11 may proceed.
 
-Phase 11 must **not** begin until Phase 10 closure is recorded in `docs/phases/step-10.7.md`.
+Closure evidence: `docs/phases/step-10.7.md`
 
 ---
 

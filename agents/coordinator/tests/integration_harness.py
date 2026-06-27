@@ -198,11 +198,13 @@ class ServiceRouterTransport(httpx.BaseTransport):
     def __init__(
         self,
         *,
-        django_state: RecordingDjangoState,
+        django_state: RecordingDjangoState | None = None,
         support_delay_seconds: float = 0.0,
         support_status_code: int | None = None,
+        content_delay_seconds: float = 0.0,
+        content_status_code: int | None = None,
     ) -> None:
-        self.django_state = django_state
+        self.django_state = django_state or RecordingDjangoState()
         self.request_log: list[dict[str, str]] = []
         self.specialist_run_bodies: list[dict[str, Any]] = []
         self._sales_bridge = _SpecialistTestClientBridge(sales_app)
@@ -210,6 +212,8 @@ class ServiceRouterTransport(httpx.BaseTransport):
         self._support_bridge = _SpecialistTestClientBridge(support_app)
         self._support_delay_seconds = support_delay_seconds
         self._support_status_code = support_status_code
+        self._content_delay_seconds = content_delay_seconds
+        self._content_status_code = content_status_code
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
@@ -225,6 +229,13 @@ class ServiceRouterTransport(httpx.BaseTransport):
             return self._sales_bridge.post_run(request)
         if host == CONTENT_HOST and path == "/run" and method == "POST":
             self._capture_run_body(request)
+            if self._content_status_code is not None:
+                return httpx.Response(
+                    self._content_status_code,
+                    json={"detail": "Simulated specialist failure."},
+                )
+            if self._content_delay_seconds > 0:
+                time.sleep(self._content_delay_seconds)
             return self._content_bridge.post_run(request)
         if host == SUPPORT_HOST and path == "/run" and method == "POST":
             self._capture_run_body(request)

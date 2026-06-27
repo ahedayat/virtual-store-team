@@ -1,0 +1,110 @@
+---
+description: Phase 10.7 guardrails for DB-backed E2E verification and Phase 10 closure.
+globs:
+  - "agents/coordinator/**"
+  - "agents/shared/**"
+  - "agents/sales/**"
+  - "agents/content/**"
+  - "agents/support/**"
+  - "backend/**"
+  - "docs/phases/step-10.7.md"
+  - "docs/phases/step-0.0.md"
+alwaysApply: false
+---
+
+# Phase 10.7 — DB-backed E2E Verification & Phase 10 Closure
+
+This rule applies only to Phase 10.7: final DB-backed integration/E2E verification for Phase 10 and closure documentation.
+
+## Scope
+
+Prove the real Phase 10 path:
+
+Celery → coordinator endpoint → coordinator graph → sales/content/support mock agents → Django internal APIs → ReportRun completed + DailyReport created
+
+Use `LLM_PROVIDER=mock` or deterministic mock specialists. The goal is final verification and closure, not new product functionality.
+
+## Required behavior
+
+1. Add final DB-backed integration/E2E verification for Phase 10.
+2. Use Django test DB or the closest reliable DB-backed harness available in the repository.
+3. Prove `ReportRun` reaches `completed`.
+4. Prove a real `DailyReport` row is created.
+5. Prove the final report contains:
+
+   * `sales_summary`
+   * `prioritized_actions`
+   * `content_suggestions`
+   * `support_insights`
+   * `next_steps`
+   * `agent_outputs_ref`
+   * `warnings[]` when applicable
+6. Prove intermediate `AgentOutput` records are persisted and referenced.
+7. Prove coordinator does not auto-approve actions.
+8. Prove coordinator does not execute actions.
+9. Prove partial specialist failure appears in `warnings[]`.
+10. Preserve Step 10.1 star topology.
+11. Preserve Step 10.2 timeout behavior.
+12. Preserve Step 10.3 AgentOutput persistence.
+13. Preserve Step 10.5 real coordinator endpoint and Celery completion wiring.
+14. Preserve Step 10.6 LangGraph and parallel/fan-out behavior.
+15. Reconcile any earlier Step 10.4 overstatement by documenting final closure only if all Phase 10 criteria pass.
+
+## Non-goals
+
+* No Phase 11 frontend/dashboard implementation.
+* No Phase 12 Prestia demo polish.
+* No real LLM calls.
+* No real Instagram publishing or sending.
+* No external side effects.
+* No new agent-to-agent mesh.
+* No direct DB access from agents.
+* No broad architecture rewrite.
+* No new product features outside Phase 10 final verification.
+* No raw PII, prompts, JWTs, Authorization headers, full payload bodies, or full message threads in logs.
+
+## Testing requirements
+
+Add deterministic tests for:
+
+* successful DB-backed daily-report path
+* real `ReportRun=completed`
+* real `DailyReport` creation
+* required DailyReport sections
+* persisted AgentOutput references
+* partial specialist failure with `warnings[]`
+* no coordinator auto-approval
+* no coordinator action execution
+* star topology remains enforced
+* timeout behavior remains enforced
+* graph-backed workflow remains used
+* Step 10.1 through Step 10.6 tests remain passing
+
+Tests must not require real LLM API keys or live external services.
+
+## Documentation requirements
+
+Create:
+
+docs/phases/step-10.7.md
+
+The document must include:
+
+* Step goal
+* Scope
+* Non-goals
+* E2E test strategy
+* DB-backed verification approach
+* Success-path verification
+* Partial-failure verification
+* Action approval/execution safety verification
+* Phase 10 acceptance criteria checklist
+* Files changed
+* Tests added
+* Verification commands and results
+* Known limitations
+* Final Phase 10 completion decision
+* Explicit statement that Phase 11 was not implemented
+* Explicit statement that Phase 12 was not implemented
+
+If and only if all Phase 10 criteria pass, the documentation may state that Phase 10 is complete and Phase 11 may proceed.

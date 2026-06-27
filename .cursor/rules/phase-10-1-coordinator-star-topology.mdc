@@ -1,0 +1,123 @@
+---
+description: Phase 10.1 — Coordinator Agent star-topology orchestration contract
+globs:
+  - "agents/coordinator/**/*.py"
+  - "agents/shared/**/*.py"
+  - "docker-compose.yml"
+  - ".env.example"
+  - "docs/phases/step-10.1.md"
+  - "docs/phases/step-0.0.md"
+alwaysApply: false
+---
+
+# Phase 10.1 — Coordinator Star Topology
+
+This rule applies when working on Phase 10.1 / Coordinator star-topology orchestration.
+
+## Scope
+
+Step 10.1 is limited to **enforcing and documenting star topology** for the coordinator workflow.
+
+The **coordinator-agent** is the only service that may call specialist agents. Specialist agents must **not** call each other.
+
+Recommended locations:
+
+* `agents/coordinator/` — star-topology HTTP client wiring and orchestration entry points
+* `agents/shared/` — shared HTTP client abstractions, schemas/types, JWT/correlation helpers (only where already intended)
+* `docs/phases/step-10.1.md` — step documentation
+* `.cursor/rules/phase-10-1-coordinator-star-topology.mdc` — this rule
+
+Reuse existing specialist agent `POST /run` endpoints from Phases 7–9:
+
+* `sales-agent` — `POST /run`
+* `content-agent` — `POST /run`
+* `support-agent` — `POST /run`
+
+## Star topology contract
+
+```
+                    coordinator-agent
+                   /        |         \
+                  /         |          \
+          sales-agent   content-agent   support-agent
+```
+
+1. **Coordinator may call** `sales-agent`, `content-agent`, and `support-agent` through their configured internal service URLs.
+2. **Sales, content, and support agents must not call each other directly.**
+3. Do not introduce agent mesh behavior or peer-to-peer specialist agent calls.
+4. Do not import specialist agent business internals into coordinator runtime code except shared schemas/types where already intended.
+5. Use HTTP client abstractions or existing shared client conventions for service-to-service calls.
+6. Keep service URLs configurable through environment/settings — not hardcoded.
+
+   Expected URL settings (from `.env.example` / project conventions):
+
+   * `SALES_AGENT_URL` — default `http://sales-agent:8101`
+   * `CONTENT_AGENT_URL` — default `http://content-agent:8102`
+   * `SUPPORT_AGENT_URL` — default `http://support-agent:8103`
+
+7. Preserve service JWT and `X-Request-ID` / correlation ID forwarding conventions where applicable (align with Phase 2 service JWT and Step 6.2 Django client patterns).
+8. Add tests or static assertions proving the topology contract where practical (e.g. coordinator client module exists; specialist agents have no outbound calls to other specialist agents).
+
+## Rules
+
+1. Focus on star-topology enforcement, coordinator-to-specialist HTTP wiring, and documentation only.
+2. Do not change Sales Agent, Content Agent, or Support Agent behavior unless a tiny compatibility import/schema fix is strictly required.
+3. Do not bypass Django as the source of truth.
+4. Do not add direct database access from agents.
+5. Do not add real external side effects.
+6. Do not call real LLM APIs or require real API keys. Use mocks, stubs, or deterministic fixtures in tests.
+7. Do not hardcode Prestia-specific business logic in agent code.
+8. Do not add frontend changes.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Phase 10.2** — node timeout behavior
+* **Phase 10.3** — intermediate `AgentOutput` persistence
+* **Phase 10.4** — full graph integration test
+* Final end-to-end daily report orchestration (merge, submit, Celery → coordinator → Django `ReportRun=completed`)
+* LangGraph graph state, merge/prioritize actions, or report completion payload submission (unless a minimal stub hook is needed to prove topology wiring)
+* Specialist agent feature work beyond tiny compatibility fixes
+* Real external side effects, Instagram publish/send, refunds, order mutation, payments, pricing/inventory changes, or content publishing
+* Auto-approval or auto-execution of actions
+
+## Testing expectations
+
+Add deterministic tests or static checks where practical proving:
+
+* Coordinator can be configured to call each specialist agent URL via environment/settings.
+* Coordinator HTTP client forwards service JWT / correlation headers per existing conventions.
+* Specialist agents do not import or call each other's service URLs (static assertion or grep-based test acceptable).
+* No peer-to-peer specialist agent HTTP calls are introduced.
+* Tests use mock HTTP servers, fixtures, or stubs — no real LLM API keys or external services required.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-10.1.md`
+
+The document must explain:
+
+* Goal and scope of star-topology enforcement
+* Topology diagram and allowed call paths
+* Coordinator-to-specialist HTTP contract (`POST /run` or equivalent)
+* Environment variables for specialist agent URLs
+* Service JWT / correlation ID forwarding behavior
+* Files changed
+* Tests or static assertions added
+* Validation commands
+* What is intentionally deferred (Steps 10.2–10.4, full daily report orchestration)
+* Known limitations
+
+## Acceptance criteria
+
+* Star topology is enforced: coordinator is the sole caller of specialist agents
+* Sales, content, and support agents do not call each other
+* Specialist agent URLs are configurable via environment/settings
+* HTTP client abstractions follow existing shared conventions
+* Service JWT / correlation ID forwarding is preserved where applicable
+* Tests or static assertions prove the topology contract where practical
+* `docs/phases/step-10.1.md` exists
+* No agent mesh, peer-to-peer specialist calls, frontend changes, real LLM calls, real API keys, direct DB access, Prestia hardcoding, or Phase 10.2–10.4 scope is implemented in this step

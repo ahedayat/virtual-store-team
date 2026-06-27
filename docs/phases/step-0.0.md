@@ -1812,7 +1812,7 @@ Phase 7 is **complete** as of 2026-06-26. Subphases **7.1 through 7.9** are impl
 
 **Goal:** Safe handling of sanitized customer message threads with approval-aware support insights, safe reply drafts, refusal behavior, prompt-injection resistance, and Django-compatible support action proposals.
 
-**Status:** Partially complete — subphases **9.1–9.3** are implemented and documented; subphases **9.4–9.8** remain before Phase 9 can close.
+**Status:** Complete — subphases **9.1–9.8** are implemented, verified, and documented in `docs/phases/step-9.1.md` through `docs/phases/step-9.8.md`.
 
 **Deliverables:**
 
@@ -1845,15 +1845,20 @@ Phase 7 is **complete** as of 2026-06-26. Subphases **7.1 through 7.9** are impl
 
 **Subtasks:**
 
-#### Completed (9.1–9.3)
+#### Subphases (9.1–9.8)
 
-| Subphase | Name                                       | Summary                                                                                                                                                                                                                                |
-| -------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **9.1**  | Support approval policy table              | Defines deterministic auto-vs-approval policy for support replies, including low-risk FAQ handling and sensitive approval-required cases such as refunds, cancellations, payment issues, disputes, personal data, and ambiguous cases. |
-| **9.2**  | Refusal behavior for out-of-scope requests | Adds deterministic refusal/scope guardrails so the Support Agent refuses sales, content, pricing, inventory, refund execution, order mutation, payment handling, credential, internal API, and approval-bypass requests.               |
-| **9.3**  | Prompt-injection safety tests              | Adds deterministic tests and minimal hardening so unsafe instructions inside customer message text cannot override system rules, approval policy, refusal behavior, PII boundaries, or action execution constraints.                   |
+| Subphase | Name                                       | Summary                                                                                                                                                                                                                                | Status |
+| -------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| **9.1**  | Support approval policy table              | Defines deterministic auto-vs-approval policy for support replies, including low-risk FAQ handling and sensitive approval-required cases such as refunds, cancellations, payment issues, disputes, personal data, and ambiguous cases. | Complete — `docs/phases/step-9.1.md` |
+| **9.2**  | Refusal behavior for out-of-scope requests | Adds deterministic refusal/scope guardrails so the Support Agent refuses sales, content, pricing, inventory, refund execution, order mutation, payment handling, credential, internal API, and approval-bypass requests.               | Complete — `docs/phases/step-9.2.md` |
+| **9.3**  | Prompt-injection safety tests              | Adds deterministic tests and minimal hardening so unsafe instructions inside customer message text cannot override system rules, approval policy, refusal behavior, PII boundaries, or action execution constraints.                   | Complete — `docs/phases/step-9.3.md` |
+| **9.4**  | SupportInsights schema and validation      | Final output contract with `reply_drafts[]`, per-draft approval/safety metadata, and strict validation gate.                                                                                                                          | Complete — `docs/phases/step-9.4.md` |
+| **9.5**  | Sanitized message thread consumption       | Django internal API fetch, deterministic context merge, safe fetch-failure warnings.                                                                                                                                                   | Complete — `docs/phases/step-9.5.md` |
+| **9.6**  | Full Support runtime pipeline              | `run_support_analysis()` with themes/sentiment, guardrails, and schema-valid `SupportInsights`.                                                                                                                                        | Complete — `docs/phases/step-9.6.md` |
+| **9.7**  | Support action mapping and persistence     | `support.reply_draft` / `support.escalate` mapping with dry-run and optional mocked Django persistence.                                                                                                                                | Complete — `docs/phases/step-9.7.md` |
+| **9.8**  | Phase 9 acceptance proof and closure       | Canonical example output, acceptance tests, full suite verification, closure documentation.                                                                                                                                            | Complete — `docs/phases/step-9.8.md` |
 
-#### Remaining (9.4–9.8)
+#### Subphase detail (reference)
 
 **9.4 — SupportInsights Schema and Validation**
 
@@ -2071,21 +2076,9 @@ Prove all Phase 9 acceptance criteria and close the phase.
 
 **Phase 9 Completion Gate:**
 
-Phase 9 is not complete until subphases **9.1 through 9.8** are implemented, tested, documented, and verified.
+Phase 9 is **complete** — subphases **9.1 through 9.8** are implemented, tested, documented, and verified in `docs/phases/step-9.8.md`.
 
-Do not begin Phase 10 until:
-
-1. `SupportInsights` and `reply_drafts[]` are implemented and schema-validated.
-2. Sanitized message thread consumption is implemented.
-3. The full Support Agent runtime pipeline is implemented.
-4. Theme/sentiment summarization is PII-safe.
-5. Support reply drafts have correct approval metadata.
-6. Sensitive drafts become approval-required / pending approval when persisted.
-7. Sales/content/out-of-scope requests are refused.
-8. Prompt-injection tests pass.
-9. Support action mapping and mocked/internal persistence are verified.
-10. `docs/examples/support_output.json` exists and validates.
-11. `docs/phases/step-9.8.md` records final verification and closure.
+Phase 10 — Coordinator & LangGraph may proceed.
 
 ---
 

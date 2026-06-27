@@ -1,0 +1,43 @@
+{
+  "metadata": {
+    "agent_name": "support-agent",
+    "report_run_id": "00000000-0000-4000-8000-0000000000s1"
+  },
+  "summary": "Recent support threads include a low-risk store-hours question and a refund inquiry that requires manager review. No customer identifiers are included in this summary.",
+  "themes": [
+    "generic_faq",
+    "refund_request"
+  ],
+  "sentiment": {
+    "label": "mixed",
+    "confidence": 0.78
+  },
+  "reply_drafts": [
+    {
+      "thread_ref": "thread-demo-001",
+      "reply_text": "Thank you for your message. Our online store support hours are Monday through Friday, 9:00–17:00 in the store timezone. We reply to messages on the next business day.",
+      "action_type": "support.reply_draft",
+      "requires_approval": false,
+      "risk_level": "low",
+      "matched_policy_code": "generic_faq",
+      "safety_notes": [],
+      "rationale": "Generic FAQ reply about store hours with no order-specific facts or policy exceptions.",
+      "language": "en"
+    },
+    {
+      "thread_ref": "thread-demo-002",
+      "reply_text": "Thank you for reaching out. A manager will review your refund request and follow up with next steps. We cannot confirm an outcome until review is complete.",
+      "action_type": "support.reply_draft",
+      "requires_approval": true,
+      "risk_level": "high",
+      "matched_policy_code": "refund_request",
+      "safety_notes": [
+        "Refund requests require manager approval before any customer-facing commitment."
+      ],
+      "rationale": "Refund-related replies must remain reviewable and cannot promise payment actions.",
+      "language": "en"
+    }
+  ],
+  "warnings": [],
+  "output_language": "en"
+}

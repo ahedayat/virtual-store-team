@@ -1,0 +1,152 @@
+---
+description: Phase 9.8 — Support Agent acceptance proof, example output validation, and Phase 9 closure
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/schemas/support.py"
+  - "agents/shared/django_client/**/*.py"
+  - "docs/phases/step-9.8.md"
+  - "docs/examples/support_output.json"
+  - "docs/phases/step-0.0.md"
+alwaysApply: false
+---
+
+# Phase 9.8 — Support Agent Acceptance Proof and Phase 9 Closure
+
+This rule applies when working on Phase 9.8 / Support Agent acceptance proof and closure.
+
+## Scope
+
+Step 9.8 is limited to **final verification and closure of Phase 9**.
+
+Prove Phase 9 acceptance criteria with deterministic tests, a validated canonical example output document, full Support Agent test-suite verification, and closure documentation.
+
+Recommended locations:
+
+* `docs/examples/support_output.json` — canonical Support Agent output example
+* `agents/support/tests/test_support_output_example.py` (or equivalent) — load and validate the example file
+* `agents/support/tests/test_phase9_acceptance.py` (or equivalent) — final Phase 9 acceptance criteria coverage
+* `docs/phases/step-9.8.md` — final closure documentation
+* `.cursor/rules/phase-9-8-support-acceptance-closure.mdc` — this rule
+
+Reuse existing modules from Steps 9.1–9.7:
+
+* Step 9.1 approval policy (`requires_approval`, policy metadata)
+* Step 9.2 refusal/scope behavior
+* Step 9.3 prompt-injection guardrails
+* Step 9.4 `SupportInsights` / `SupportReplyDraft` schema validation
+* Step 9.5 sanitized message thread consumption
+* Step 9.6 runtime pipeline (`run_support_analysis()` / `POST /run`)
+* Step 9.7 support action mapping and mocked Django persistence
+
+Follow Phase 8.7 Content Agent acceptance-proof patterns for example output validation and acceptance test structure.
+
+## Rules
+
+1. Focus on acceptance proof, example output validation, full test-suite verification, and closure documentation only.
+2. Do not implement major new Support Agent features unless a tiny fix is required to make existing 9.1–9.7 behavior testable or to fix a test import/path issue.
+3. Add `docs/examples/support_output.json` and validate it against `SupportInsights`.
+4. Add deterministic final acceptance tests proving the complete Support Agent scope.
+5. Acceptance tests must cover:
+
+   * sanitized thread consumption
+   * theme and sentiment summarization without PII leakage
+   * safe `reply_drafts[]`
+   * correct per-draft `requires_approval`
+   * sensitive draft approval-required behavior
+   * sales/content/out-of-scope refusal
+   * prompt-injection resistance
+   * support action mapping
+   * mocked Django persistence behavior
+
+6. Prefer the highest practical test layer: `POST /run` when stable, otherwise `run_support_analysis()` and Step 9.7 action-mapping helpers.
+7. Run and document the full Support Agent test suite (`agents/support/tests/`).
+8. Reconcile implemented behavior against the original Phase 9 acceptance criteria in `docs/phases/step-0.0.md`.
+9. Create or update `docs/phases/step-9.8.md` with acceptance evidence, files changed, validation commands, example output details, full test-suite results, criteria reconciliation, and final Phase 9 status.
+10. Use MockProvider, fixtures, or seeded test data only. Do not require real LLM API keys or external services.
+11. Do not include raw PII in examples, fixtures, tests, logs, warnings, prompts, docs, or action payloads.
+12. Preserve Steps 9.1–9.7 behavior and existing Sales Agent, Content Agent, backend action, and health-check tests.
+
+### Phase closure documentation
+
+If updating `docs/phases/step-0.0.md` is consistent with prior phase-closure convention in this repository (for example Phase 1.9, Phase 6.9), update **only the Phase 9 section** after all verification passes.
+
+Otherwise leave `step-0.0.md` unchanged and record closure solely in `docs/phases/step-9.8.md`.
+
+Do not fabricate command results. If a command cannot be run, document it as not run and explain why.
+
+### Sign-off rule
+
+Phase 9 may be marked complete only if all final Phase 9 acceptance criteria pass.
+
+If any required acceptance test or full test-suite run fails, document the failure clearly in `docs/phases/step-9.8.md` and mark Phase 9 as not ready for sign-off.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Phase 10** — Coordinator/LangGraph orchestration
+* Daily report orchestration
+* Sales Agent or Content Agent behavior changes unless a test import/path fix is strictly required
+* Frontend dashboard changes
+* Real external side effects of any kind
+* Sending Instagram DMs
+* Refunds, order cancellation, order mutation, payment handling, price changes, inventory changes, or content publishing
+* Real LLM API calls or provider SDK usage requiring real API keys
+* Direct database access from agents
+* Prestia-specific hardcoded business logic in agent code (Prestia-style sanitized fixtures may appear only in tests, fixtures, or example documentation)
+* Auto-execution of queued support actions in Django
+* Redesign of Step 9.1–9.7 behavior (except tiny compatibility adjustments required for acceptance testing)
+
+## Testing expectations
+
+The final implementation must include **deterministic acceptance tests** proving:
+
+* `docs/examples/support_output.json` exists and validates against `SupportInsights`
+* Sanitized thread consumption works end-to-end (Step 9.5)
+* Theme/sentiment summarization is PII-safe
+* `reply_drafts[]` are safe and schema-valid
+* Per-draft `requires_approval` is correct per Step 9.1 policy
+* Sensitive drafts remain approval-required when mapped/persisted (Step 9.7)
+* Sales, content, and out-of-scope requests are refused (Step 9.2)
+* Prompt-injection attempts cannot bypass support policy or leak PII (Step 9.3)
+* Support actions map to Django-compatible `support.reply_draft` and `support.escalate` payloads
+* Mocked Django persistence behaves correctly (`dry_run`, explicit persist, failure warnings)
+* Full Support Agent test suite passes
+* No real LLM API keys or external services are required
+
+Use synthetic, sanitized fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.8.md`
+
+The document must explain:
+
+* Goal and scope of Phase 9 acceptance proof and closure
+* Reconciliation against original Phase 9 acceptance criteria (`docs/phases/step-0.0.md`)
+* Canonical example output (`docs/examples/support_output.json`) and validation approach
+* Acceptance tests added and criteria mapping
+* Full Support Agent test-suite commands and results
+* Files changed
+* Validation commands
+* Final Phase 9 completion decision
+* Known limitations and deferred work (Phase 10)
+
+## Acceptance criteria
+
+* All Phase 9 subphases 9.1–9.8 are implemented and documented
+* `docs/examples/support_output.json` exists and validates against `SupportInsights`
+* Deterministic acceptance tests cover sanitized thread consumption, PII-safe summarization, safe `reply_drafts[]`, correct `requires_approval`, sensitive draft approval-required behavior, refusal, prompt-injection resistance, action mapping, and mocked Django persistence
+* Support Agent summarizes recent threads without leaking PII
+* Sensitive drafts are approval-required / pending approval when persisted
+* Support Agent refuses sales/content/out-of-scope tasks when asked in message text
+* Prompt-injection attempts cannot override support policy or scope
+* Support output validates against `SupportInsights` with `reply_drafts[]`
+* Django-compatible support actions can be produced and persisted through mocked/internal workflow
+* Full Support Agent test suite passes
+* Final verification is documented in `docs/phases/step-9.8.md`
+* Phase 9 can be marked complete and Phase 10 may proceed only if all criteria pass
+* No customer contact, Instagram DMs, refunds, order mutation, payments, pricing/inventory changes, publishing, real external side effects, direct DB access, real LLM API keys, or Prestia-specific hardcoding in agent code
+* No raw PII in examples, fixtures, tests, logs, warnings, prompts, docs, or action payloads

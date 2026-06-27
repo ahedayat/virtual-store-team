@@ -15,8 +15,11 @@ from agents.shared.schemas.errors import (
 from agents.shared.schemas.content import ContentDraft, ContentSuggestions
 from agents.shared.schemas.sales import SalesAnalysisResult, SalesRecommendation
 from agents.shared.schemas.support import (
+    SupportAggregateSentiment,
     SupportApprovalPolicyDecision,
     SupportDraftSafetySignals,
+    SupportInsights,
+    SupportReplyDraft,
     SupportRunResponse,
     SupportScopeEvaluation,
 )
@@ -35,8 +38,11 @@ __all__ = [
     "SalesRecommendation",
     "ScopeViolation",
     "StrictAgentModel",
+    "SupportAggregateSentiment",
     "SupportApprovalPolicyDecision",
     "SupportDraftSafetySignals",
+    "SupportInsights",
+    "SupportReplyDraft",
     "SupportRunResponse",
     "SupportScopeEvaluation",
     "export_json_schema",

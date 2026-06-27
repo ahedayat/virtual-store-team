@@ -14,7 +14,7 @@ from agents.support.injection_guard import sanitize_support_reply_output
 from agents.support.refusal import evaluate_support_scope
 from agents.support.validation import (
     SupportLLMOutputError,
-    ensure_valid_support_run_response,
+    coerce_support_output_to_run_response,
     log_support_validation_failure,
     parse_llm_json_output,
 )
@@ -76,7 +76,11 @@ def run_support_analysis(
     try:
         raw_output = provider.complete(messages)
         parsed = parse_llm_json_output(raw_output)
-        validated = ensure_valid_support_run_response(parsed)
+        validated = coerce_support_output_to_run_response(
+            parsed,
+            output_language=language,
+            request_id=request_id,
+        )
 
         updates: dict[str, Any] = {}
         sanitized_reply = sanitize_support_reply_output(validated.reply, customer_message)

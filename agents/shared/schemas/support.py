@@ -1,12 +1,12 @@
-"""Support Agent schemas (Phase 6.6 scaffold, Phase 9.1 approval policy)."""
+"""Support Agent schemas (Phase 6.6 scaffold, Phase 9.1 approval policy, Phase 9.4 insights)."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from agents.shared.schemas.base import StrictAgentModel
+from agents.shared.schemas.base import BaseAgentResponse, StrictAgentModel
 
 SupportPolicyCategory = Literal[
     "generic_faq",
@@ -87,6 +87,51 @@ class SupportScopeEvaluation(StrictAgentModel):
     action_type: SupportDefaultActionType | None = None
     warnings: list[str] = Field(default_factory=list)
     support_category: SupportPolicyCategory | None = None
+
+
+SupportSentimentLabel = Literal["positive", "neutral", "negative", "mixed", "unknown"]
+
+
+class SupportAggregateSentiment(StrictAgentModel):
+    """Aggregate sentiment for a support analysis run (non-PII)."""
+
+    label: SupportSentimentLabel
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class SupportReplyDraft(StrictAgentModel):
+    """Per-thread support reply draft with approval and safety metadata."""
+
+    thread_ref: str = Field(min_length=1)
+    reply_text: str = Field(min_length=1)
+    action_type: SupportDefaultActionType
+    requires_approval: bool
+    risk_level: SupportRiskLevel
+    matched_policy_code: str = Field(min_length=1)
+    safety_notes: list[str] = Field(default_factory=list)
+    reason: str | None = None
+    rationale: str | None = None
+    language: str | None = None
+
+    @model_validator(mode="after")
+    def validate_approval_metadata(self) -> Self:
+        if self.action_type == "support.escalate" and not self.requires_approval:
+            raise ValueError("support.escalate drafts must require manager approval")
+
+        if self.risk_level == "high" and not self.requires_approval:
+            raise ValueError("high-risk support drafts must require manager approval")
+
+        return self
+
+
+class SupportInsights(BaseAgentResponse):
+    """Final Support Agent output contract with per-thread reply drafts."""
+
+    summary: str = Field(min_length=1)
+    themes: list[str] = Field(default_factory=list)
+    sentiment: SupportAggregateSentiment
+    reply_drafts: list[SupportReplyDraft] = Field(min_length=1)
+    output_language: str | None = None
 
 
 class SupportRunResponse(StrictAgentModel):

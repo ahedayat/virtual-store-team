@@ -113,7 +113,7 @@ class MockProviderTests(unittest.TestCase):
         self.assertIn("drafts", result)
         self.assertGreaterEqual(len(result["drafts"]), 1)
 
-    def test_support_agent_marker_returns_support_scaffold_shape(self) -> None:
+    def test_support_agent_marker_returns_support_insights_shape(self) -> None:
         messages = [
             {
                 "role": "system",
@@ -137,14 +137,14 @@ class MockProviderTests(unittest.TestCase):
 
         result = self.provider.complete(messages)
 
-        self.assertEqual(result["agent"], "support-agent")
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["language"], "fa")
-        self.assertIn("reply", result)
-        self.assertIn("intent", result)
-        self.assertIsInstance(result["confidence"], float)
-        self.assertIsInstance(result["requires_human_review"], bool)
-        self.assertEqual(result["request_id"], "req-support-1")
+        self.assertEqual(result["metadata"]["agent_name"], "support-agent")
+        self.assertIn("reply_drafts", result)
+        self.assertGreaterEqual(len(result["reply_drafts"]), 1)
+        self.assertIn("summary", result)
+        self.assertIn("sentiment", result)
+        draft = result["reply_drafts"][0]
+        self.assertIn(draft["action_type"], {"support.reply_draft", "support.escalate"})
+        self.assertEqual(draft["thread_ref"], "req-support-1")
 
     def test_support_refund_message_requires_human_review(self) -> None:
         messages = [
@@ -169,8 +169,8 @@ class MockProviderTests(unittest.TestCase):
 
         result = self.provider.complete(messages)
 
-        self.assertEqual(result["intent"], "refund_request")
-        self.assertTrue(result["requires_human_review"])
+        self.assertEqual(result["reply_drafts"][0]["matched_policy_code"], "refund_request")
+        self.assertTrue(result["reply_drafts"][0]["requires_approval"])
 
     def test_unrecognized_prompt_returns_warning_envelope(self) -> None:
         result = self.provider.complete(

@@ -52,7 +52,7 @@ class SupportRunEndpointTests(unittest.TestCase):
         self.assertEqual(body["agent"], "support-agent")
         self.assertEqual(body["status"], "ok")
         self.assertEqual(body["language"], "en")
-        self.assertEqual(body["intent"], "order_status")
+        self.assertEqual(body["intent"], "order_status_question")
         self.assertEqual(body["request_id"], "trace-support-1")
         self.assertIn("reply", body)
         self.assertIsInstance(body["confidence"], float)

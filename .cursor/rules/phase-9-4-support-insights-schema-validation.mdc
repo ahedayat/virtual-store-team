@@ -1,0 +1,134 @@
+---
+description: Phase 9.4 — Support Agent SupportInsights schema and validation layer
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/**/*.py"
+  - "docs/phases/step-9.4.md"
+alwaysApply: false
+---
+
+# Phase 9.4 — Support Agent SupportInsights Schema and Validation
+
+This rule applies when working on Phase 9.4 / SupportInsights schema and validation.
+
+## Scope
+
+Step 9.4 is limited to **defining and validating the final Support Agent output contract**.
+
+Recommended locations:
+
+* `agents/shared/schemas/support.py` — `SupportInsights`, `SupportReplyDraft`
+* `agents/support/validation.py` — parse LLM JSON, validate output, safe logging
+* `agents/support/analysis.py` — validation gate integration where minimal hooks are needed
+* `agents/shared/llm/mock.py` — mock support output compatible with the new schema
+* `agents/support/tests/test_schema_validation.py` (or equivalent)
+* `docs/phases/step-9.4.md` — step documentation
+
+Reuse existing modules:
+
+* Step 6.3 `validate_agent_response` and `AgentSchemaValidationError`
+* Step 9.1 approval policy classification (`requires_approval`, `policy_code` / matched policy identifier)
+* Step 9.2 refusal/scope behavior (schema-valid structured output)
+* Step 9.3 prompt-injection guardrails (do not redesign)
+
+Follow Sales Agent (Step 7.3) and Content Agent (Phase 8.3) validation patterns for the validation gate.
+
+## Rules
+
+1. Implement or complete `SupportInsights` and `SupportReplyDraft` as explicit Pydantic/schema models.
+2. Support Agent output must use **`reply_drafts[]`**, not only a single reply field.
+3. Each `SupportReplyDraft` must include per-draft approval and safety metadata such as:
+
+   * `requires_approval`
+   * `action_type`
+   * `risk_level`
+   * `policy_code` or matched policy identifier
+   * `safety_notes` or equivalent
+   * safe `thread_ref` where appropriate
+
+4. Only allow these support action types:
+
+   * `support.reply_draft`
+   * `support.escalate`
+
+5. Add a validation gate following existing Sales Agent and Content Agent validation patterns. Invalid LLM/mock JSON must not be returned directly.
+6. Update MockProvider or support mock generation **only as needed** to emit schema-valid `SupportInsights`.
+7. Add **deterministic schema and validation tests** covering valid and invalid outputs. Tests must not require real LLM API keys.
+8. **Preserve Step 9.1 approval policy behavior.** Do not redesign the approval policy table unless a tiny compatibility adjustment is required.
+9. **Preserve Step 9.2 refusal behavior.** Do not redesign refusal/scope guardrails unless a tiny compatibility adjustment is required.
+10. **Preserve Step 9.3 prompt-injection guardrails.** Do not redesign injection hardening unless a tiny compatibility adjustment is required.
+
+### Data and tenancy
+
+* No raw PII may be logged, included in test snapshots, prompts, fixtures, or examples.
+* Tenant and store data must remain generic. Do not hardcode Prestia-specific business rules.
+* Avoid logging full reply draft bodies, prompt bodies, or message thread content at INFO level.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Step 9.5** — sanitized message thread fetching from Django internal APIs
+* **Step 9.6** — full support runtime pipeline
+* **Step 9.7** — support action persistence
+* **Step 9.8** — acceptance closure and example output proof
+* Real external side effects such as sending Instagram DMs, refunds, order changes, payment actions, publishing, pricing changes, inventory changes, or customer contact
+* Real LLM provider calls or API keys
+* Django database access from agents
+* Coordinator / LangGraph orchestration
+* Frontend dashboard changes
+* `docs/examples/support_output.json` (Step 9.8)
+
+Also out of scope unless strictly needed for schema validation:
+
+* Message-thread ingestion beyond sanitized fixtures
+* FastAPI `POST /run` endpoint (Step 9.6)
+* Django action execution or external integrations
+* Coordinator, sales, or content agent changes beyond minimal shared-schema needs
+
+## Testing expectations
+
+The final implementation must include **focused tests** proving:
+
+* Valid support output validates against `SupportInsights`
+* `reply_drafts[]` is present and schema-validated
+* Valid `support.reply_draft` and `support.escalate` drafts pass validation
+* Invalid action types are rejected
+* Invalid or missing approval metadata is rejected
+* Malformed drafts or missing required fields are rejected
+* Extra unknown fields are rejected (strict schema policy per Step 6.3)
+* MockProvider or support mock output passes the same validation path
+
+Use synthetic, sanitized fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.4.md`
+
+The document must explain:
+
+* Goal and scope of the SupportInsights output contract and validation layer
+* `SupportInsights` and `SupportReplyDraft` schema fields and semantics
+* Allowed action types and per-draft approval/safety metadata
+* Validation gate flow and integration points
+* Relationship to Step 9.1 approval policy, Step 9.2 refusal behavior, and Step 9.3 prompt-injection guardrails (preserve, not redesign)
+* Mock output changes
+* Files changed
+* Tests added
+* Validation commands
+* Known limitations and deferred work (Steps 9.5–9.8)
+
+## Acceptance criteria
+
+* `SupportInsights` and `SupportReplyDraft` exist as explicit schema models
+* Support output uses `reply_drafts[]` with per-draft approval and safety metadata
+* Only `support.reply_draft` and `support.escalate` action types are accepted
+* Validation gate follows Sales/Content Agent patterns; invalid output is never returned as-is
+* MockProvider or support mock emits schema-valid `SupportInsights` where needed
+* Focused deterministic tests cover valid and invalid outputs without real LLM API keys
+* Step 9.1 approval policy, Step 9.2 refusal behavior, and Step 9.3 prompt-injection guardrails are preserved
+* No real external side effects, PII in fixtures/logs, Django DB access, or Prestia-specific hardcoding
+* Steps 9.5–9.8 are not implemented in this step
+* `docs/phases/step-9.4.md` documents the implementation

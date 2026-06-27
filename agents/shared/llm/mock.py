@@ -6,6 +6,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from agents.support.approval_policy import evaluate_support_approval_policy
+
 _CONTENT_AGENT_MARKER = "Content Agent"
 _SALES_AGENT_MARKER = "Sales Agent"
 _SUPPORT_AGENT_MARKER = "Support Agent"
@@ -256,6 +258,19 @@ def _build_sales_mock_output(
     }
 
 
+def _classify_support_mock_category(customer_message: str) -> str:
+    normalized_message = customer_message.strip().lower()
+    if any(token in normalized_message for token in ("legal", "lawyer", "sue", "safety")):
+        return "legal_or_safety_claim"
+    if any(token in normalized_message for token in ("angry", "furious", "terrible service")):
+        return "angry_or_escalated_customer"
+    if "refund" in normalized_message or "return" in normalized_message:
+        return "refund_request"
+    if "order" in normalized_message or "shipping" in normalized_message:
+        return "order_status_question"
+    return "generic_faq"
+
+
 def _build_support_mock_output(
     *,
     customer_message: str,
@@ -263,40 +278,98 @@ def _build_support_mock_output(
     output_language: str,
     request_id: str | None,
 ) -> dict[str, Any]:
-    normalized_message = customer_message.strip().lower()
-    if "refund" in normalized_message or "return" in normalized_message:
-        intent = "refund_request"
-        requires_human_review = True
-        confidence = 0.85
-    elif "order" in normalized_message or "shipping" in normalized_message:
-        intent = "order_status"
-        requires_human_review = False
-        confidence = 0.9
-    else:
-        intent = "general_inquiry"
-        requires_human_review = False
-        confidence = 0.92
+    category = _classify_support_mock_category(customer_message)
+    policy = evaluate_support_approval_policy(category)
+    action_type = policy.default_action_type
+    thread_ref = request_id.strip() if isinstance(request_id, str) and request_id.strip() else "thread-mock-1"
 
     if output_language == "en":
-        reply = (
-            f"Thank you for reaching out via {channel}. "
-            "We received your message and will follow up shortly."
-        )
+        if action_type == "support.escalate":
+            reply_text = (
+                "Thank you for your message. A store manager will review this conversation "
+                "and follow up through the approved support workflow."
+            )
+            summary = "Support conversation requires manager escalation."
+        elif category == "refund_request":
+            reply_text = (
+                f"Thank you for reaching out via {channel}. "
+                "We received your refund-related message and will prepare a reviewable draft."
+            )
+            summary = "Refund-related support message analyzed with approval-required draft."
+        elif category == "order_status_question":
+            reply_text = (
+                f"Thank you for reaching out via {channel}. "
+                "We can help with order-status questions after manager review."
+            )
+            summary = "Order-status support message analyzed with reviewable draft."
+        else:
+            reply_text = (
+                f"Thank you for reaching out via {channel}. "
+                "We received your message and prepared a reviewable support reply draft."
+            )
+            summary = "Support message analyzed with a reviewable reply draft."
     else:
-        reply = (
-            f"از پیام شما از طریق {channel} سپاسگزاریم. "
-            "پیام شما دریافت شد و به‌زودی پاسخ داده می‌شود."
-        )
+        if action_type == "support.escalate":
+            reply_text = (
+                "از پیام شما سپاسگزاریم. مدیر فروشگاه این گفتگو را بررسی می‌کند "
+                "و از مسیر تأییدشده پشتیبانی پیگیری خواهد شد."
+            )
+            summary = "گفتگوی پشتیبانی نیازمند ارجاع به مدیر است."
+        elif category == "refund_request":
+            reply_text = (
+                f"از پیام شما از طریق {channel} سپاسگزاریم. "
+                "پیام مرتبط با بازپرداخت دریافت شد و پیش‌نویس قابل بررسی آماده شد."
+            )
+            summary = "پیام مرتبط با بازپرداخت با پیش‌نویس نیازمند تأیید تحلیل شد."
+        elif category == "order_status_question":
+            reply_text = (
+                f"از پیام شما از طریق {channel} سپاسگزاریم. "
+                "برای پرسش وضعیت سفارش، پیش‌نویس قابل بررسی آماده شد."
+            )
+            summary = "پیام وضعیت سفارش با پیش‌نویس قابل بررسی تحلیل شد."
+        else:
+            reply_text = (
+                f"از پیام شما از طریق {channel} سپاسگزاریم. "
+                "پیام شما دریافت شد و پیش‌نویس پاسخ پشتیبانی آماده شد."
+            )
+            summary = "پیام پشتیبانی با پیش‌نویس قابل بررسی تحلیل شد."
+
+    sentiment_label = "neutral"
+    if category in {"angry_or_escalated_customer", "legal_or_safety_claim"}:
+        sentiment_label = "negative"
+    elif category == "generic_faq":
+        sentiment_label = "positive"
+
+    safety_notes: list[str] = []
+    if policy.requires_approval:
+        safety_notes.append("Manager approval is required before any external customer contact.")
 
     return {
-        "agent": "support-agent",
-        "status": "ok",
-        "language": output_language,
-        "reply": reply,
-        "intent": intent,
-        "confidence": confidence,
-        "requires_human_review": requires_human_review,
-        "request_id": request_id,
+        "metadata": {
+            "agent_name": "support-agent",
+            "report_run_id": request_id,
+        },
+        "summary": summary,
+        "themes": [category],
+        "sentiment": {
+            "label": sentiment_label,
+            "confidence": 0.9 if policy.requires_approval else 0.92,
+        },
+        "reply_drafts": [
+            {
+                "thread_ref": thread_ref,
+                "reply_text": reply_text,
+                "action_type": action_type,
+                "requires_approval": policy.requires_approval,
+                "risk_level": policy.risk_level,
+                "matched_policy_code": policy.matched_policy_code,
+                "safety_notes": safety_notes,
+                "rationale": policy.reason,
+                "language": output_language,
+            }
+        ],
+        "warnings": [],
+        "output_language": output_language,
     }
 
 

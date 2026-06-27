@@ -1,0 +1,102 @@
+---
+description: Phase 10.4 guardrails for full coordinator graph integration testing with mock LLM across services.
+globs:
+  - "agents/coordinator/**"
+  - "agents/sales/**"
+  - "agents/content/**"
+  - "agents/support/**"
+  - "agents/shared/**"
+  - "backend/**"
+  - "docker-compose.yml"
+  - "docker-compose.override.yml"
+  - ".env.example"
+  - "docs/phases/step-10.4.md"
+alwaysApply: false
+---
+
+# Phase 10.4 — Full Graph Mock Integration Guardrails
+
+This rule applies only to Phase 10.4: integration testing of the full coordinator daily-report graph with mock LLM behavior across services.
+
+## Scope
+
+Implement and verify a deterministic integration test path for:
+
+* Django/Celery report generation entrypoint or the closest existing testable equivalent
+* coordinator-agent daily-report workflow
+* sales-agent
+* content-agent
+* support-agent
+* Django internal APIs for context, agent outputs, actions, and report completion
+
+The integration path must run with `LLM_PROVIDER=mock` and must not require real LLM API keys.
+
+## Required behavior
+
+1. Exercise the full daily-report graph with mock specialist agents.
+2. Verify the coordinator calls specialist agents only through the star topology.
+3. Verify the final report is submitted to Django.
+4. Verify `ReportRun` reaches `completed` on success.
+5. Verify the final DailyReport payload contains:
+
+   * sales summary
+   * prioritized actions
+   * content suggestions
+   * support insights
+   * `agent_outputs_ref`
+   * `warnings` when applicable
+6. Verify coordinator does not auto-approve or auto-execute actions.
+7. Verify specialist actions remain in the Django action workflow with correct approval state.
+8. Verify partial specialist failure still produces a report with structured `warnings[]` when project conventions allow partial completion.
+9. Preserve Step 10.1 star topology.
+10. Preserve Step 10.2 per-node timeout behavior.
+11. Preserve Step 10.3 AgentOutput persistence behavior.
+
+## Non-goals
+
+* No real LLM calls.
+* No real Instagram publishing or sending.
+* No frontend/dashboard UI implementation.
+* No Phase 11 work.
+* No Phase 12 Prestia demo polish.
+* No scheduled/automatic daily reports.
+* No new agent-to-agent mesh.
+* No direct DB access from agents.
+* No raw PII logging.
+* No large architectural rewrite unless required to make the existing contract testable.
+
+## Testing requirements
+
+Add deterministic integration tests for:
+
+* successful full graph run with mock LLM across coordinator, sales, content, and support paths
+* final report completion in Django
+* persisted AgentOutput references included in final report
+* created/proposed actions are not auto-approved by coordinator
+* partial specialist failure represented in `warnings[]`
+* no real external service or LLM key required
+* star topology remains intact
+
+Use mocks, in-process app clients, test HTTP transports, Docker compose test services, or existing project conventions. Prefer the smallest reliable integration harness that exercises the real coordinator graph and real service request/response contracts.
+
+## Documentation requirements
+
+Create:
+
+docs/phases/step-10.4.md
+
+The document must include:
+
+* Step goal
+* Scope
+* Non-goals
+* Integration test strategy
+* Mock LLM/service setup
+* Success-path verification
+* Partial-failure verification
+* Files changed
+* Tests added
+* Verification commands and results
+* Known limitations
+* Phase 10 completion decision
+* Confirmation that Phase 11 frontend work and Phase 12 demo polish were not implemented

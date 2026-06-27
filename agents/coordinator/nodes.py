@@ -9,6 +9,7 @@ from agents.coordinator.agent_output_persistence import (
     build_agent_output_not_persisted_warning,
     persist_specialist_agent_output,
 )
+from agents.coordinator.merge import build_merged_daily_report
 from agents.coordinator.config import CoordinatorNodeTimeouts, load_coordinator_node_timeouts
 from agents.coordinator.specialist_clients import SpecialistAgentClient
 from agents.coordinator.state import DailyReportWorkflowState
@@ -70,7 +71,7 @@ class WorkflowNodeDependencies:
         )
 
 
-def _specialist_payload(state: DailyReportWorkflowState) -> dict[str, Any]:
+def _base_specialist_payload(state: DailyReportWorkflowState) -> dict[str, Any]:
     return {
         "report_run_id": state.report_run_id,
         "tenant_id": state.tenant_id,
@@ -81,6 +82,109 @@ def _specialist_payload(state: DailyReportWorkflowState) -> dict[str, Any]:
         "fetch_from_django": False,
         "persist_actions": False,
         "dry_run": True,
+        "output_language": "en",
+    }
+
+
+def _sales_specialist_payload(state: DailyReportWorkflowState) -> dict[str, Any]:
+    base = _base_specialist_payload(state)
+    context = state.context if isinstance(state.context, dict) else {}
+    payload = {
+        "context": context,
+        "store_id": state.store_id,
+        "report_run_id": state.report_run_id,
+        "request_id": state.request_id,
+        "service_token": state.service_token,
+        "fetch_from_django": base["fetch_from_django"],
+        "persist_actions": base["persist_actions"],
+        "dry_run": base["dry_run"],
+        "output_language": base["output_language"],
+    }
+    sales_summary = context.get("sales_summary")
+    if isinstance(sales_summary, dict):
+        payload["sales_summary"] = sales_summary
+    inventory = context.get("inventory")
+    if isinstance(inventory, dict):
+        payload["inventory"] = inventory
+    return payload
+
+
+def _content_specialist_payload(state: DailyReportWorkflowState) -> dict[str, Any]:
+    base = _base_specialist_payload(state)
+    context = state.context if isinstance(state.context, dict) else {}
+    products_section = context.get("products")
+    products: list[dict[str, Any]] = []
+    if isinstance(products_section, dict):
+        raw_items = products_section.get("items")
+        if isinstance(raw_items, list):
+            products = [item for item in raw_items if isinstance(item, dict)]
+
+    store = context.get("store")
+    store_context: dict[str, Any] = {"settings": {"brand_voice": {"tone": "warm"}}}
+    if isinstance(store, dict):
+        display_name = store.get("name")
+        if isinstance(display_name, str) and display_name.strip():
+            store_context["display_name"] = display_name.strip()
+        settings = store.get("settings")
+        if isinstance(settings, dict):
+            store_context["settings"] = settings
+
+    return {
+        "context": context,
+        "products": products,
+        "store_context": store_context,
+        "report_run_id": state.report_run_id,
+        "request_id": state.request_id,
+        "output_language": base["output_language"],
+    }
+
+
+def _derive_support_message_from_context(context: dict[str, Any]) -> tuple[str, str]:
+    messages = context.get("messages")
+    if isinstance(messages, dict):
+        threads = messages.get("threads")
+        if isinstance(threads, list):
+            for thread in threads:
+                if not isinstance(thread, dict):
+                    continue
+                channel = thread.get("channel")
+                resolved_channel = (
+                    channel.strip()
+                    if isinstance(channel, str) and channel.strip()
+                    else "instagram_dm"
+                )
+                raw_messages = thread.get("messages")
+                if not isinstance(raw_messages, list):
+                    continue
+                for message in raw_messages:
+                    if not isinstance(message, dict):
+                        continue
+                    sender_role = message.get("sender_role") or message.get("sender_type")
+                    if sender_role != "customer":
+                        continue
+                    text = message.get("text")
+                    if isinstance(text, str) and text.strip():
+                        return text.strip(), resolved_channel
+    return "What are your store hours?", "instagram_dm"
+
+
+def _support_specialist_payload(state: DailyReportWorkflowState) -> dict[str, Any]:
+    base = _base_specialist_payload(state)
+    context = state.context if isinstance(state.context, dict) else {}
+    customer_message, channel = _derive_support_message_from_context(context)
+    return {
+        "tenant_id": state.tenant_id,
+        "store_id": state.store_id,
+        "context": context,
+        "report_run_id": state.report_run_id,
+        "request_id": state.request_id,
+        "service_token": state.service_token,
+        "customer_message": customer_message,
+        "channel": channel,
+        "fetch_recent_messages": False,
+        "persist_actions": base["persist_actions"],
+        "dry_run": base["dry_run"],
+        "output_language": base["output_language"],
     }
 
 
@@ -159,10 +263,11 @@ def _run_specialist_node(
     node_name: str,
     runner: Callable[[SpecialistAgentClient, dict[str, Any]], dict[str, Any]],
     output_field: str,
+    payload_builder: Callable[[DailyReportWorkflowState], dict[str, Any]],
 ) -> DailyReportWorkflowState:
     timeouts = deps.resolve_timeouts()
     timeout_seconds = timeouts.timeout_for_node(node_name)
-    payload = _specialist_payload(state)
+    payload = payload_builder(state)
 
     def _call() -> dict[str, Any]:
         client = deps.build_specialist_client(timeout_seconds, state)
@@ -196,6 +301,7 @@ def node_run_sales(
         node_name=WORKFLOW_NODE_RUN_SALES,
         runner=lambda client, payload: client.run_sales(payload),
         output_field="sales_output",
+        payload_builder=_sales_specialist_payload,
     )
 
 
@@ -209,6 +315,7 @@ def node_run_content(
         node_name=WORKFLOW_NODE_RUN_CONTENT,
         runner=lambda client, payload: client.run_content(payload),
         output_field="content_output",
+        payload_builder=_content_specialist_payload,
     )
 
 
@@ -222,21 +329,8 @@ def node_run_support(
         node_name=WORKFLOW_NODE_RUN_SUPPORT,
         runner=lambda client, payload: client.run_support(payload),
         output_field="support_output",
+        payload_builder=_support_specialist_payload,
     )
-
-
-def _extract_section_summary(output: dict[str, Any] | None) -> dict[str, Any] | None:
-    if output is None:
-        return None
-    summary = output.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        return {"summary": summary.strip()}
-    metadata = output.get("metadata")
-    if isinstance(metadata, dict):
-        agent_name = metadata.get("agent_name")
-        if isinstance(agent_name, str) and agent_name.strip():
-            return {"agent_name": agent_name.strip()}
-    return {"present": True}
 
 
 def node_merge(
@@ -248,28 +342,16 @@ def node_merge(
     timeout_seconds = timeouts.merge_seconds
 
     def _merge() -> dict[str, Any]:
-        sections: dict[str, Any] = {}
-        missing_sections: list[str] = []
-
-        for key, output in (
-            ("sales", state.sales_output),
-            ("content", state.content_output),
-            ("support", state.support_output),
-        ):
-            section = _extract_section_summary(output)
-            if section is None:
-                missing_sections.append(key)
-            else:
-                sections[key] = section
-
-        return {
-            "report_run_id": state.report_run_id,
-            "store_id": state.store_id,
-            "sections": sections,
-            "missing_sections": missing_sections,
-            "partial": bool(missing_sections),
-            "agent_outputs_ref": list(state.agent_outputs_ref),
-        }
+        return build_merged_daily_report(
+            report_run_id=state.report_run_id,
+            store_id=state.store_id,
+            context=state.context,
+            sales_output=state.sales_output,
+            content_output=state.content_output,
+            support_output=state.support_output,
+            agent_outputs_ref=list(state.agent_outputs_ref),
+            workflow_warnings=list(state.warnings),
+        )
 
     try:
         state.merged_report = run_with_node_timeout(

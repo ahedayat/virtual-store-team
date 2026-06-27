@@ -1810,35 +1810,282 @@ Phase 7 is **complete** as of 2026-06-26. Subphases **7.1 through 7.9** are impl
 
 ### Phase 9 — Support Agent
 
-**Goal:** Safe handling of customer message threads with approval-aware reply drafts.
+**Goal:** Safe handling of sanitized customer message threads with approval-aware support insights, safe reply drafts, refusal behavior, prompt-injection resistance, and Django-compatible support action proposals.
+
+**Status:** Partially complete — subphases **9.1–9.3** are implemented and documented; subphases **9.4–9.8** remain before Phase 9 can close.
 
 **Deliverables:**
 
-- Support agent pipeline
-- Classification: low-risk vs sensitive (approval required)
-- Output schema: `SupportInsights`, `reply_drafts[]`
-- Scope guardrails in system prompt
+- Support Agent approval policy table for auto vs approval-required drafts
+- Refusal behavior for out-of-scope support requests
+- Prompt-injection safety tests for unsafe customer message text
+- `SupportInsights` output schema with `reply_drafts[]`
+- `SupportReplyDraft` schema with per-draft safety and approval metadata
+- Sanitized message thread consumption from Django internal APIs
+- Full Support Agent runtime pipeline
+- Theme and sentiment summarization without PII leakage
+- Safe reply draft generation with scope, policy, and prompt-injection guardrails
+- Correct `requires_approval` assignment per reply draft
+- Support action mapping for `support.reply_draft` and `support.escalate`
+- Optional/dry-run Django action persistence through the internal action workflow
+- Canonical example output at `docs/examples/support_output.json`
+- Final Phase 9 acceptance proof and closure documentation
 
 **Tasks:**
 
-1. Consume sanitized message threads API
-2. Summarize themes and sentiment (non-PII)
-3. Draft replies with safety constraints
-4. Assign correct `requires_approval` flag
+1. Consume sanitized message threads from Django internal APIs or coordinator-provided context.
+2. Summarize support themes and sentiment without exposing raw PII.
+3. Draft safe customer replies with support-specific constraints.
+4. Assign correct per-draft `requires_approval` based on the Step 9.1 policy table.
+5. Refuse out-of-scope requests using the Step 9.2 refusal behavior.
+6. Treat customer message text as untrusted data and preserve Step 9.3 prompt-injection defenses.
+7. Map valid support drafts/escalations to Django-compatible action payloads.
+8. Persist support actions through the Django action workflow when requested, with dry-run support for local/test runs.
+9. Prove final acceptance criteria with deterministic tests and example output.
 
 **Subtasks:**
 
-- 9.1 Policy table for auto vs approval (e.g. generic FAQ → auto draft only, refund mention → approval)
-- 9.2 Refusal behavior for out-of-scope requests
-- 9.3 Tests for unsafe prompt injection from message text
+#### Completed (9.1–9.3)
 
-**Dependencies:** Phase 6 (parallel with Phases 7–8)
+| Subphase | Name                                       | Summary                                                                                                                                                                                                                                |
+| -------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **9.1**  | Support approval policy table              | Defines deterministic auto-vs-approval policy for support replies, including low-risk FAQ handling and sensitive approval-required cases such as refunds, cancellations, payment issues, disputes, personal data, and ambiguous cases. |
+| **9.2**  | Refusal behavior for out-of-scope requests | Adds deterministic refusal/scope guardrails so the Support Agent refuses sales, content, pricing, inventory, refund execution, order mutation, payment handling, credential, internal API, and approval-bypass requests.               |
+| **9.3**  | Prompt-injection safety tests              | Adds deterministic tests and minimal hardening so unsafe instructions inside customer message text cannot override system rules, approval policy, refusal behavior, PII boundaries, or action execution constraints.                   |
 
-**Acceptance criteria:**
+#### Remaining (9.4–9.8)
 
-- Support agent summarizes recent threads without leaking PII
-- Sensitive drafts created with `pending_approval`
-- Agent refuses to perform sales tasks when asked in message
+**9.4 — SupportInsights Schema and Validation**
+
+Define the final Support Agent output contract.
+
+*Scope:*
+
+- Add or complete `SupportInsights` schema.
+- Add `SupportReplyDraft` schema.
+- Ensure output uses `reply_drafts[]`, not only a single reply field.
+- Include per-draft approval/safety metadata such as:
+
+  - `requires_approval`
+  - `action_type`
+  - `risk_level`
+  - `policy_code` or matched policy identifier
+  - `safety_notes` or equivalent
+  - `thread_ref` / safe opaque reference where applicable
+- Ensure only allowed support action types are accepted:
+
+  - `support.reply_draft`
+  - `support.escalate`
+- Add a validation gate similar to Sales and Content Agent validation patterns.
+- Update MockProvider or support mock generation to emit schema-valid `SupportInsights`.
+
+*Expected deliverables:*
+
+- Support schema definitions in the appropriate shared schema module.
+- Support validation helper/gate.
+- Focused schema tests for valid and invalid outputs.
+- Mock support output compatible with the new schema.
+- Documentation file to be created during implementation: `docs/phases/step-9.4.md`.
+
+*Acceptance criteria:*
+
+- `SupportInsights` validates successfully for valid support output.
+- `reply_drafts[]` is present and schema-validated.
+- Invalid action types, invalid approval metadata, malformed drafts, or missing required fields are rejected.
+- Tests are deterministic and require no real LLM API keys.
+
+**9.5 — Sanitized Message Thread Consumption**
+
+Allow Support Agent to consume sanitized recent message threads from Django internal APIs and merge them with coordinator-provided context.
+
+*Scope:*
+
+- Add `agents/support/django_fetch.py` or equivalent.
+- Fetch sanitized recent messages from Django internal endpoint, likely:
+
+  - `GET /internal/ai/stores/{store_id}/messages/recent/`
+- Use the shared `DjangoClient` and service JWT forwarding conventions.
+- Add `/run` request fields or pipeline input options for fetch mode if consistent with existing agent patterns.
+- Merge fetched Django context with caller-provided context deterministically.
+- Add safe fallback warnings if Django fetch fails.
+- Do not fetch raw PII.
+- Do not log full thread bodies at INFO level.
+- Preserve Step 9.1, 9.2, and 9.3 behavior.
+
+*Expected deliverables:*
+
+- Django fetch helper for support message threads.
+- Context merge helper if needed.
+- Deterministic tests using mocked Django client responses.
+- Tests for successful fetch, fetch failure fallback, and caller-context merge.
+- Documentation file to be created during implementation: `docs/phases/step-9.5.md`.
+
+*Acceptance criteria:*
+
+- Support Agent can consume sanitized message threads from Django internal APIs.
+- Fetched data remains tenant/store scoped through existing service JWT conventions.
+- Fetch failure does not crash the entire support run; safe warnings are returned.
+- No raw PII is introduced into logs, prompts, or outputs.
+- Tests pass without external services.
+
+**9.6 — Full Support Runtime Pipeline**
+
+Implement the main Support Agent analysis pipeline.
+
+*Scope:*
+
+- Add or complete `run_support_analysis()` or equivalent.
+- Consume sanitized thread context, not only a single `customer_message`.
+- Summarize themes and sentiment across recent support threads.
+- Generate safe reply drafts as `reply_drafts[]`.
+- Apply Step 9.1 approval policy to every draft.
+- Apply Step 9.2 refusal/scope guardrails before draft generation where applicable.
+- Apply Step 9.3 prompt-injection defenses to untrusted customer text.
+- Validate final output against `SupportInsights`.
+- Support `AI_OUTPUT_LANGUAGE` for user-facing summaries/replies where applicable.
+- Handle empty/no-message cases deterministically without hallucinating customer facts.
+- Avoid real external side effects.
+
+*Expected deliverables:*
+
+- Full Support Agent runtime pipeline.
+- Theme/sentiment summarization logic.
+- Safe multi-draft generation path using MockProvider/LLM abstraction.
+- Empty-thread behavior.
+- Pipeline tests for normal threads, empty threads, sensitive requests, refusal cases, and prompt-injection attempts.
+- Documentation file to be created during implementation: `docs/phases/step-9.6.md`.
+
+*Acceptance criteria:*
+
+- Support Agent returns schema-valid `SupportInsights`.
+- Recent threads are summarized without PII leakage.
+- `reply_drafts[]` contains safe drafts with per-draft approval metadata.
+- Sensitive drafts are marked approval-required.
+- Sales/content/out-of-scope requests remain refused.
+- Prompt-injection defenses remain effective.
+- Tests are deterministic and require no real LLM API keys.
+
+**9.7 — Support Action Mapping and Django Persistence**
+
+Map validated Support Agent drafts and escalations to Django-compatible support actions.
+
+*Scope:*
+
+- Add support action mapping module, likely:
+
+  - `agents/support/action_mapping.py`
+- Map valid `SupportReplyDraft` items to:
+
+  - `support.reply_draft`
+  - `support.escalate`
+- Include safe payload fields only.
+- Preserve approval policy metadata.
+- Support dry-run mode for local/test runs.
+- Submit mapped actions to Django through `POST /internal/ai/actions/` only when persistence is requested.
+- Do not send customer messages directly.
+- Do not execute refunds, cancellations, payment handling, order changes, price changes, inventory changes, or real Instagram sends.
+- Add persistence failure warnings without discarding the support analysis result.
+
+*Expected deliverables:*
+
+- Support action mapping helper.
+- Optional persistence helper using shared Django client.
+- `/run` integration with dry-run and persist options if consistent with existing Sales/Content patterns.
+- Tests for valid mapping, unsupported action rejection, low-risk behavior, sensitive approval-required behavior, dry-run behavior, successful mocked persistence, and persistence failure warning.
+- Documentation file to be created during implementation: `docs/phases/step-9.7.md`.
+
+*Acceptance criteria:*
+
+- Valid support drafts map to Django-compatible action payloads.
+- Sensitive drafts become approval-required / pending approval through the existing Django workflow.
+- Low-risk safe support reply drafts can be marked as low-risk/auto-eligible according to policy.
+- No direct external side effects are introduced.
+- Persistence tests use mocks and require no external services.
+
+**9.8 — Phase 9 Acceptance Proof and Closure**
+
+Prove all Phase 9 acceptance criteria and close the phase.
+
+*Scope:*
+
+- Add canonical example output:
+
+  - `docs/examples/support_output.json`
+- Validate the example against `SupportInsights`.
+- Add final acceptance tests covering:
+
+  - sanitized thread consumption
+  - theme/sentiment summarization without PII
+  - safe `reply_drafts[]`
+  - correct `requires_approval` assignment
+  - sensitive draft approval-required behavior
+  - sales-task refusal
+  - prompt-injection resistance
+  - action mapping and mocked Django persistence
+- Run the full Support Agent test suite.
+- Reconcile docs against the original Phase 9 scope.
+- Create final closure documentation:
+
+  - `docs/phases/step-9.8.md`
+
+*Expected deliverables:*
+
+- `docs/examples/support_output.json`
+- Acceptance tests for Phase 9
+- Full Support Agent verification
+- Final closure document
+- Completion decision for Phase 9
+
+*Acceptance criteria:*
+
+- All Phase 9 subphases 9.1–9.8 are implemented and documented.
+- Support Agent summarizes recent threads without leaking PII.
+- Sensitive drafts are approval-required / pending approval when persisted.
+- Support Agent refuses to perform sales tasks when asked in message text.
+- Prompt-injection attempts cannot override support policy or scope.
+- Support output validates against `SupportInsights`.
+- Django-compatible support actions can be produced and persisted through mocked/internal workflow.
+- Full Support Agent test suite passes.
+- Phase 9 can be marked complete and Phase 10 may proceed.
+
+**Dependencies:**
+
+- Phase 6 shared agent scaffold and LLM abstraction
+- Phase 3 sanitized message APIs
+- Phase 4 action model and internal AI write APIs
+- Steps 9.1–9.3 for approval policy, refusal behavior, and prompt-injection defenses
+
+**Final Phase 9 acceptance criteria:**
+
+- Support Agent consumes sanitized recent message threads.
+- Support Agent summarizes recent threads without leaking PII.
+- Support Agent returns schema-valid `SupportInsights` with `reply_drafts[]`.
+- Reply drafts are safe and include correct per-draft `requires_approval`.
+- Sensitive support drafts become approval-required / pending approval through the action workflow.
+- Low-risk support replies follow the Step 9.1 policy.
+- Support Agent refuses out-of-scope sales/content/manager-only tasks.
+- Prompt-injection attempts from customer message text cannot bypass policies or leak PII.
+- Support actions map to Django-compatible `support.reply_draft` and `support.escalate` payloads.
+- No real external side effects are introduced.
+- Final verification is documented in `docs/phases/step-9.8.md`.
+
+**Phase 9 Completion Gate:**
+
+Phase 9 is not complete until subphases **9.1 through 9.8** are implemented, tested, documented, and verified.
+
+Do not begin Phase 10 until:
+
+1. `SupportInsights` and `reply_drafts[]` are implemented and schema-validated.
+2. Sanitized message thread consumption is implemented.
+3. The full Support Agent runtime pipeline is implemented.
+4. Theme/sentiment summarization is PII-safe.
+5. Support reply drafts have correct approval metadata.
+6. Sensitive drafts become approval-required / pending approval when persisted.
+7. Sales/content/out-of-scope requests are refused.
+8. Prompt-injection tests pass.
+9. Support action mapping and mocked/internal persistence are verified.
+10. `docs/examples/support_output.json` exists and validates.
+11. `docs/phases/step-9.8.md` records final verification and closure.
 
 ---
 

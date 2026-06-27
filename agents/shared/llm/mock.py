@@ -271,17 +271,76 @@ def _classify_support_mock_category(customer_message: str) -> str:
     return "generic_faq"
 
 
+def _extract_support_thread_customer_text(user_payload: Mapping[str, Any]) -> tuple[str, str | None]:
+    """Aggregate sanitized customer text and the primary thread ref from prompt payload."""
+    threads_raw = user_payload.get("message_threads")
+    if not isinstance(threads_raw, list) or not threads_raw:
+        customer_message = user_payload.get("untrusted_customer_message")
+        if not isinstance(customer_message, str):
+            customer_message = user_payload.get("customer_message")
+        if not isinstance(customer_message, str):
+            customer_message = ""
+        return customer_message, None
+
+    latest_text = ""
+    latest_created_at = ""
+    primary_thread_ref: str | None = None
+
+    for thread in threads_raw:
+        if not isinstance(thread, Mapping):
+            continue
+        thread_ref = thread.get("thread_ref")
+        messages_raw = thread.get("messages")
+        if not isinstance(messages_raw, list):
+            continue
+        for message in messages_raw:
+            if not isinstance(message, Mapping):
+                continue
+            sender_role = message.get("sender_role")
+            if sender_role != "customer":
+                continue
+            text = message.get("untrusted_customer_message")
+            if not isinstance(text, str):
+                text = message.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            created_at = message.get("created_at")
+            created_at_value = created_at if isinstance(created_at, str) else ""
+            if created_at_value >= latest_created_at:
+                latest_created_at = created_at_value
+                latest_text = text
+                if isinstance(thread_ref, str) and thread_ref.strip():
+                    primary_thread_ref = thread_ref.strip()
+
+    if latest_text:
+        return latest_text, primary_thread_ref
+
+    customer_message = user_payload.get("untrusted_customer_message")
+    if not isinstance(customer_message, str):
+        customer_message = user_payload.get("customer_message")
+    if not isinstance(customer_message, str):
+        customer_message = ""
+    return customer_message, primary_thread_ref
+
+
 def _build_support_mock_output(
     *,
     customer_message: str,
     channel: str,
     output_language: str,
     request_id: str | None,
+    thread_ref: str | None = None,
+    thread_count: int = 1,
 ) -> dict[str, Any]:
     category = _classify_support_mock_category(customer_message)
     policy = evaluate_support_approval_policy(category)
     action_type = policy.default_action_type
-    thread_ref = request_id.strip() if isinstance(request_id, str) and request_id.strip() else "thread-mock-1"
+    if thread_ref and thread_ref.strip():
+        resolved_thread_ref = thread_ref.strip()
+    elif isinstance(request_id, str) and request_id.strip():
+        resolved_thread_ref = request_id.strip()
+    else:
+        resolved_thread_ref = "thread-mock-1"
 
     if output_language == "en":
         if action_type == "support.escalate":
@@ -307,7 +366,12 @@ def _build_support_mock_output(
                 f"Thank you for reaching out via {channel}. "
                 "We received your message and prepared a reviewable support reply draft."
             )
-            summary = "Support message analyzed with a reviewable reply draft."
+            if thread_count > 1:
+                summary = (
+                    f"Analyzed {thread_count} support threads with a reviewable reply draft."
+                )
+            else:
+                summary = "Support message analyzed with a reviewable reply draft."
     else:
         if action_type == "support.escalate":
             reply_text = (
@@ -357,7 +421,7 @@ def _build_support_mock_output(
         },
         "reply_drafts": [
             {
-                "thread_ref": thread_ref,
+                "thread_ref": resolved_thread_ref,
                 "reply_text": reply_text,
                 "action_type": action_type,
                 "requires_approval": policy.requires_approval,
@@ -419,13 +483,17 @@ class MockProvider:
             )
 
         if _SUPPORT_AGENT_MARKER in system_content:
-            customer_message = user_payload.get("untrusted_customer_message")
-            if not isinstance(customer_message, str):
-                customer_message = user_payload.get("customer_message")
+            customer_message, primary_thread_ref = _extract_support_thread_customer_text(
+                user_payload
+            )
             channel = user_payload.get("channel")
             request_id = user_payload.get("request_id")
-            if not isinstance(customer_message, str):
-                customer_message = ""
+            thread_count_raw = user_payload.get("thread_count")
+            thread_count = (
+                thread_count_raw
+                if isinstance(thread_count_raw, int) and not isinstance(thread_count_raw, bool)
+                else 1
+            )
             if not isinstance(channel, str):
                 channel = "unknown"
             if isinstance(request_id, str):
@@ -439,6 +507,8 @@ class MockProvider:
                 channel=channel,
                 output_language=output_language,
                 request_id=normalized_request_id,
+                thread_ref=primary_thread_ref,
+                thread_count=thread_count,
             )
 
         return {

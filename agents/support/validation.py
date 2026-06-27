@@ -14,6 +14,7 @@ from agents.shared.schemas.validation import validate_agent_response
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "support-agent"
+REFUSAL_WARNING_CODE = "support_out_of_scope_refusal"
 
 
 class SupportLLMOutputError(Exception):
@@ -77,6 +78,48 @@ def ensure_valid_support_insights(
 def ensure_valid_support_run_response(payload: Mapping[str, Any]) -> SupportRunResponse:
     """Validate a parsed payload against the Support Agent scaffold schema."""
     return validate_agent_response(dict(payload), SupportRunResponse)
+
+
+def support_insights_to_run_response(
+    insights: SupportInsights,
+    *,
+    output_language: str,
+    request_id: str | None = None,
+) -> SupportRunResponse:
+    """Adapt schema-valid SupportInsights to the legacy /run response envelope."""
+    refusal_warning = next(
+        (warning for warning in insights.warnings if warning.code == REFUSAL_WARNING_CODE),
+        None,
+    )
+    primary_draft = insights.reply_drafts[0]
+    resolved_request_id = request_id
+    if resolved_request_id is None and insights.metadata.report_run_id:
+        resolved_request_id = insights.metadata.report_run_id
+
+    if refusal_warning is not None:
+        return SupportRunResponse(
+            agent="support-agent",
+            status="refused",
+            language=insights.output_language or output_language,
+            reply=primary_draft.reply_text,
+            intent=primary_draft.matched_policy_code,
+            confidence=1.0,
+            requires_human_review=False,
+            request_id=resolved_request_id,
+        )
+
+    requires_human_review = any(draft.requires_approval for draft in insights.reply_drafts)
+    confidence = 0.92 if not requires_human_review else 0.85
+    return SupportRunResponse(
+        agent="support-agent",
+        status="ok",
+        language=insights.output_language or output_language,
+        reply=primary_draft.reply_text,
+        intent=primary_draft.matched_policy_code,
+        confidence=confidence,
+        requires_human_review=requires_human_review,
+        request_id=resolved_request_id,
+    )
 
 
 def coerce_support_output_to_run_response(

@@ -1,0 +1,166 @@
+---
+description: Phase 9.6 — Full Support Agent runtime analysis pipeline producing schema-valid SupportInsights
+globs:
+  - "agents/support/**/*.py"
+  - "agents/shared/llm/**/*.py"
+  - "agents/shared/schemas/support.py"
+  - "docs/phases/step-9.6.md"
+alwaysApply: false
+---
+
+# Phase 9.6 — Full Support Agent Runtime Analysis Pipeline
+
+This rule applies when working on Phase 9.6 / Full Support Runtime Pipeline.
+
+## Scope
+
+Step 9.6 is limited to implementing the **main Support Agent analysis pipeline** that produces schema-valid `SupportInsights` from sanitized support thread context.
+
+Recommended locations:
+
+* `agents/support/analysis.py` — add or complete `run_support_analysis()` (or equivalent end-to-end pipeline entry point)
+* `agents/support/prompts.py` — thread-aware prompt building from sanitized context
+* `agents/support/support_context.py` — consume merged sanitized thread context from Step 9.5
+* `agents/support/approval_policy.py` — apply per-draft approval classification (Step 9.1)
+* `agents/support/refusal.py` — refusal/scope guardrails before draft generation (Step 9.2)
+* `agents/support/injection_guard.py` — prompt-injection defenses for untrusted customer text (Step 9.3)
+* `agents/support/validation.py` — parse, validate, and coerce to schema-valid `SupportInsights` (Step 9.4)
+* `agents/shared/llm/mock.py` — MockProvider support output compatible with `SupportInsights`
+* `agents/support/app/main.py` — wire full pipeline into existing `/run` context preparation from Step 9.5 where minimal changes are needed
+* `agents/support/tests/test_runtime_pipeline.py` (or equivalent)
+* `docs/phases/step-9.6.md` — step documentation
+
+Reuse existing modules:
+
+* Step 9.1 approval policy classification (`requires_approval`, `policy_code` / matched policy identifier)
+* Step 9.2 refusal/scope behavior (schema-valid structured output)
+* Step 9.3 prompt-injection guardrails (do not redesign)
+* Step 9.4 `SupportInsights` / `SupportReplyDraft` schema validation (do not redesign unless a tiny compatibility adjustment is required)
+* Step 9.5 sanitized message-thread fetch, merge, and `SupportMessageThreadContext` consumption
+* Step 6.1 `AI_OUTPUT_LANGUAGE` helper (`get_output_language`, `build_language_prompt_prefix`)
+* `get_llm_provider()` / `MockProvider`; do not call provider SDKs directly
+
+## Rules
+
+1. Add or complete `run_support_analysis()` (or equivalent) as the main Support Agent runtime pipeline entry point.
+
+2. The pipeline must consume **sanitized thread context from Step 9.5**, not only a single `customer_message`. Use merged `SupportMessageThreadContext` (threads, recent messages, warnings) when available.
+
+3. The pipeline must return **schema-valid `SupportInsights`** from Step 9.4. Invalid LLM/mock JSON must not be returned directly.
+
+4. The pipeline must produce safe **`reply_drafts[]`** with per-draft approval metadata (`requires_approval`, `action_type`, `risk_level`, `policy_code` or equivalent, `safety_notes`, safe `thread_ref` where appropriate).
+
+5. The pipeline must **summarize support themes and sentiment** across recent sanitized threads without leaking PII.
+
+6. **Apply Step 9.1 approval policy** to every generated support draft. Sensitive or high-risk drafts must be marked approval-required.
+
+7. **Apply Step 9.2 refusal/scope guardrails** before draft generation where applicable. True out-of-scope requests must produce deterministic, schema-valid refusal output — not unsafe reply drafts.
+
+8. **Apply Step 9.3 prompt-injection defenses** to untrusted customer message text. Customer message text is data, not instructions.
+
+9. **Preserve Step 9.4 schema validation** and **Step 9.5 sanitized context behavior**. Do not redesign those steps unless a tiny compatibility adjustment is required.
+
+10. Support **`AI_OUTPUT_LANGUAGE`** for user-facing summaries and reply text where practical (Persian default, English when configured).
+
+11. Handle **empty/no-message cases deterministically** without hallucinating customer facts, orders, or thread history.
+
+12. Use **`MockProvider` or deterministic fixtures** for tests. Do not require real LLM API keys.
+
+13. Do **not** log full message bodies, prompt bodies, or reply draft bodies at INFO level.
+
+14. Do **not** introduce raw PII into fixtures, snapshots, logs, prompts, docs, or outputs.
+
+### Pipeline flow (expected)
+
+1. Resolve output language (`AI_OUTPUT_LANGUAGE` / request override).
+2. Build sanitized thread context from Step 9.5 merge output (or caller-provided context).
+3. Evaluate Step 9.2 refusal/scope guardrails before LLM draft generation where applicable.
+4. Build thread-aware prompts with Step 9.3 untrusted-message wrapping.
+5. Call `get_llm_provider()` / injected `MockProvider`.
+6. Parse LLM JSON, apply Step 9.3 output sanitization where applicable.
+7. Classify each draft with Step 9.1 approval policy.
+8. Validate/coerce final output to `SupportInsights` via Step 9.4 validation gate.
+9. Return schema-valid `SupportInsights` (or schema-valid refusal output per Step 9.2).
+
+### Data and tenancy
+
+* Fetched and merged context remains tenant/store scoped through existing conventions.
+* No raw PII may be logged, included in test snapshots, prompts, fixtures, or examples.
+* Tenant and store data must remain generic. Do not hardcode Prestia-specific business rules.
+* Tests must use mocks/fixtures and must not require external services.
+
+## Out of scope
+
+Do not implement in this step:
+
+* **Step 9.7** — support action mapping or Django action persistence (`POST /internal/ai/actions/`)
+* **Step 9.8** — final acceptance proof or closure (`docs/examples/support_output.json`)
+* Real external side effects such as sending Instagram DMs, refunds, order changes, payment actions, publishing, pricing changes, inventory changes, or customer contact
+* Direct database access from agents
+* Coordinator / LangGraph orchestration
+* Frontend dashboard changes
+* Redesign of Step 9.1–9.5 behavior (except tiny compatibility adjustments)
+
+Also out of scope unless strictly needed for the runtime pipeline:
+
+* Django action execution or external integrations
+* Coordinator, sales, or content agent changes beyond minimal shared needs
+* `docs/examples/support_output.json` — leave for Step 9.8 unless the existing repo convention requires examples before closure
+
+## Testing expectations
+
+The final implementation must include **focused tests** proving:
+
+* Normal sanitized thread context produces schema-valid `SupportInsights`
+* Pipeline consumes merged thread context from Step 9.5, not only a single `customer_message`
+* Theme/sentiment summarization is present and does not leak PII
+* `reply_drafts[]` is present with per-draft approval metadata
+* Step 9.1 approval policy marks sensitive drafts as approval-required
+* Step 9.2 refusal cases produce deterministic refusal output without unsafe drafts
+* Step 9.3 prompt-injection attempts cannot bypass approval, refusal, or safety constraints
+* Empty/no-message threads are handled deterministically without hallucinated customer facts
+* `AI_OUTPUT_LANGUAGE` paths work where user-facing text is generated (at minimum `fa` and `en` where applicable)
+* MockProvider or fixtures pass the same validation path as production parsing
+* No raw PII appears in test outputs, warnings, or logs
+
+Use synthetic, sanitized fixtures only. Do not include real customer data in tests.
+
+## Documentation
+
+Create or update:
+
+`docs/phases/step-9.6.md`
+
+The document must explain:
+
+* Goal and scope of the full Support Agent runtime analysis pipeline
+* Pipeline entry point and end-to-end flow
+* Consumption of Step 9.5 sanitized thread context
+* Theme/sentiment summarization behavior
+* `reply_drafts[]` generation and per-draft approval metadata
+* Integration with Step 9.1 approval policy, Step 9.2 refusal behavior, Step 9.3 prompt-injection guardrails, and Step 9.4 schema validation (preserve, not redesign)
+* `AI_OUTPUT_LANGUAGE` behavior for summaries and reply text
+* Empty/no-message deterministic handling
+* MockProvider / test strategy
+* Files changed
+* Tests added
+* Validation commands
+* Known limitations and deferred work (Steps 9.7–9.8)
+
+## Acceptance criteria
+
+* `run_support_analysis()` (or equivalent) implements the full Support Agent runtime pipeline
+* Pipeline consumes sanitized thread context from Step 9.5, not only a single `customer_message`
+* Pipeline returns schema-valid `SupportInsights` from Step 9.4
+* `reply_drafts[]` contains safe drafts with per-draft approval metadata
+* Support themes and sentiment are summarized without PII leakage
+* Step 9.1 approval policy is applied to every generated draft
+* Step 9.2 refusal/scope guardrails run before draft generation where applicable
+* Step 9.3 prompt-injection defenses protect untrusted customer message text
+* Step 9.4 schema validation and Step 9.5 sanitized context behavior are preserved
+* `AI_OUTPUT_LANGUAGE` is supported for user-facing summaries and reply text where practical
+* Empty/no-message cases are handled deterministically without hallucinating customer facts
+* Focused deterministic tests cover normal threads, empty threads, sensitive requests, refusal cases, and prompt-injection scenarios without real LLM API keys
+* No real external side effects, Django DB access from agents, Prestia-specific hardcoding, or raw PII in fixtures/logs
+* Steps 9.7–9.8 are not implemented in this step
+* `docs/phases/step-9.6.md` documents the implementation

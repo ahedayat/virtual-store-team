@@ -12,9 +12,10 @@ from agents.shared.schemas.errors import AgentSchemaValidationError
 from agents.shared.schemas.support import SupportRunResponse
 from agents.support.analysis import run_support_analysis
 from agents.support.app.schemas import SupportRunRequest
-from agents.support.django_fetch import fetch_message_threads_with_fallback
-from agents.support.support_context import resolve_support_message_context
-from agents.support.validation import SupportLLMOutputError
+from agents.support.validation import (
+    SupportLLMOutputError,
+    support_insights_to_run_response,
+)
 
 SERVICE_NAME = "support-agent"
 
@@ -61,49 +62,13 @@ def _build_django_client(
     return DjangoClient(service_token=token, request_id=request_id)
 
 
-def _prepare_message_context(
-    *,
-    payload: SupportRunRequest,
-    django_client: DjangoClient | None,
-) -> None:
-    """Resolve sanitized message-thread context for Step 9.5 without changing scaffold output."""
-    needs_context = (
-        payload.fetch_recent_messages
-        or payload.message_threads is not None
-        or payload.context is not None
-    )
-    if not needs_context:
-        return
-
-    django_context, fetch_warnings = fetch_message_threads_with_fallback(
-        django_client=django_client,
-        store_id=payload.store_id,
-        fetch_recent_messages=payload.fetch_recent_messages,
-    )
-    resolved_context, merge_warnings = resolve_support_message_context(
-        context=payload.context,
-        message_threads=payload.message_threads,
-        django_context=django_context,
-    )
-
-    for warning in fetch_warnings + merge_warnings:
-        logger.warning(
-            "Support message context warning",
-            extra={
-                "service": SERVICE_NAME,
-                "warning_code": warning.code,
-                "thread_count": resolved_context.thread_count,
-            },
-        )
-
-
 @app.post("/run", response_model=SupportRunResponse)
 def run_support_agent(
     payload: SupportRunRequest,
     x_request_id: str | None = Header(default=None, alias="X-Request-ID"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> SupportRunResponse:
-    """Run the Support Agent scaffold pipeline and return structured mock output."""
+    """Run the Support Agent runtime pipeline and return structured output."""
     request_id = x_request_id or payload.request_id
 
     logger.info(
@@ -121,16 +86,15 @@ def run_support_agent(
         service_token = authorization.removeprefix("Bearer ").strip()
 
     django_client = None
-    if payload.fetch_recent_messages:
-        django_client = _build_django_client(
-            service_token=service_token,
-            request_id=request_id,
-        )
-
-    _prepare_message_context(payload=payload, django_client=django_client)
+    if payload.fetch_recent_messages or payload.context is not None or payload.message_threads is not None:
+        if payload.fetch_recent_messages:
+            django_client = _build_django_client(
+                service_token=service_token,
+                request_id=request_id,
+            )
 
     try:
-        return run_support_analysis(
+        insights = run_support_analysis(
             customer_message=payload.customer_message,
             channel=payload.channel,
             tenant_id=payload.tenant_id,
@@ -138,6 +102,24 @@ def run_support_agent(
             metadata=payload.metadata,
             report_run_id=payload.report_run_id,
             output_language=payload.output_language,
+            request_id=request_id,
+            context=payload.context,
+            message_threads=payload.message_threads,
+            django_client=django_client,
+            fetch_recent_messages=payload.fetch_recent_messages,
+        )
+        for warning in insights.warnings:
+            logger.warning(
+                "Support analysis warning",
+                extra={
+                    "service": SERVICE_NAME,
+                    "warning_code": warning.code,
+                    "request_id": request_id,
+                },
+            )
+        return support_insights_to_run_response(
+            insights,
+            output_language=payload.output_language or "fa",
             request_id=request_id,
         )
     except (AgentSchemaValidationError, SupportLLMOutputError) as exc:

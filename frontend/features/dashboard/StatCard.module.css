@@ -1,0 +1,95 @@
+.card {
+  border-radius: var(--radius-2xl);
+  padding: 1.25rem;
+  border: 1px solid rgba(239, 231, 218, 0.5);
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 0.2s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.iconWrap {
+  padding: 0.625rem;
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(43, 39, 34, 0.05);
+}
+
+.icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.iconCoordinator {
+  color: var(--agent-coordinator);
+}
+
+.iconSupport {
+  color: var(--agent-support);
+}
+
+.iconSales {
+  color: var(--agent-sales);
+}
+
+.iconContent {
+  color: var(--agent-content);
+}
+
+.iconGold {
+  color: var(--gold);
+}
+
+.trend {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.trendUp {
+  color: var(--agent-sales);
+  background: rgba(47, 158, 126, 0.1);
+}
+
+.trendDown {
+  color: var(--agent-content);
+  background: rgba(155, 93, 229, 0.1);
+}
+
+.trendIcon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}

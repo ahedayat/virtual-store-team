@@ -1,4 +1,195 @@
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
+@import '../styles/variables.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  margin: 2rem;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
+  background-color: var(--ivory);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.glass {
+  background: rgba(255, 253, 249, 0.7);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+.aurora {
+  background:
+    radial-gradient(60% 60% at 20% 20%, rgba(211, 154, 44, 0.18), transparent 60%),
+    radial-gradient(50% 50% at 85% 15%, rgba(177, 85, 158, 0.14), transparent 60%),
+    radial-gradient(55% 55% at 80% 85%, rgba(47, 126, 216, 0.14), transparent 60%),
+    radial-gradient(50% 50% at 15% 90%, rgba(47, 158, 126, 0.14), transparent 60%);
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.08) 37%,
+    rgba(0, 0, 0, 0.04) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+.scrollbarHide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbarHide::-webkit-scrollbar {
+  display: none;
+}
+
+.pbSafe {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.fadeIn {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.slideInRight {
+  animation: slideInRight 0.3s ease forwards;
+}
+
+.slideInBottom {
+  animation: slideInBottom 0.5s ease forwards;
+}
+
+@keyframes agentPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
+@keyframes floatY {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes dashFlow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    opacity: 0;
+    transform: translateY(2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ping {
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(181, 137, 63, 0.28);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(181, 137, 63, 0.45);
+}
+
+.dashFlow {
+  animation: dashFlow 20s linear infinite;
 }

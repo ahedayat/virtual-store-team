@@ -1,0 +1,134 @@
+.topBar {
+  height: 4rem;
+  border-bottom: 1px solid rgba(239, 231, 218, 0.5);
+  background: rgba(255, 253, 249, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+}
+
+@media (min-width: 768px) {
+  .topBar {
+    padding: 0 2rem;
+  }
+}
+
+.mobileBrand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .mobileBrand {
+    display: none;
+  }
+}
+
+.logo {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(to bottom right, var(--gold), var(--brown));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logoIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: white;
+}
+
+.mobileTitle {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.searchWrap {
+  display: none;
+  flex: 1;
+  max-width: 28rem;
+  position: relative;
+}
+
+@media (min-width: 768px) {
+  .searchWrap {
+    display: block;
+  }
+}
+
+.searchIcon {
+  width: 1rem;
+  height: 1rem;
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+
+.searchInput {
+  width: 100%;
+  background: var(--ivory);
+  border: 1px solid var(--champagne);
+  border-radius: 9999px;
+  padding: 0.5rem 2.5rem 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: rgba(181, 137, 63, 0.5);
+  box-shadow: 0 0 0 1px rgba(181, 137, 63, 0.5);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bellBtn {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.bellBtn:hover {
+  background: rgba(239, 231, 218, 0.5);
+}
+
+.bellIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.bellDot {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--agent-content);
+  border-radius: 9999px;
+  border: 2px solid var(--surface);
+}

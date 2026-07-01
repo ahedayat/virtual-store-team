@@ -1,0 +1,202 @@
+---
+description: React.js to Next.js migration for the Agentic Store frontend
+globs:
+  - frontend/**
+alwaysApply: false
+---
+
+# Goal
+
+Migrate the existing React application from `frontend_react` into a professional Next.js application inside `frontend`.
+
+The objective is NOT to redesign the UI.
+
+The objective IS to reproduce the exact same UI, layout, spacing, typography, colors, animations and interactions that are visible in the Magic Patterns Preview.
+
+The generated Next.js application should look visually identical to the original React implementation.
+
+---
+
+# Migration Rules
+
+- Never modify the React source inside `frontend_react`.
+- Treat `frontend_react` as a read-only reference.
+- Generate all new code only inside `frontend`.
+
+- Preserve the exact UI.
+- Preserve component hierarchy whenever reasonable.
+- Preserve all styling.
+- Convert inline styles into CSS Modules whenever possible.
+- Do not simplify the design.
+
+---
+
+# Next.js
+
+Use:
+
+- App Router
+- TypeScript
+- Client Components only when needed
+- Server Components by default
+
+Do not introduce unnecessary "use client".
+
+---
+
+# Styling
+
+Prefer
+
+- CSS Modules
+
+Global styles should only contain:
+
+- reset
+- typography
+- variables
+- theme
+
+Do not use inline styles except when technically required.
+
+---
+
+# Components
+
+Split large JSX into reusable logical components.
+
+Avoid:
+
+- giant page.tsx files
+- duplicated JSX
+
+---
+
+# State Management
+
+Use Zustand.
+
+Create stores inside:
+
+```
+stores/
+```
+
+Subscribe only to required slices.
+
+Example:
+
+```ts
+const loading = useStore(s => s.loading)
+```
+
+Never subscribe to the entire store.
+
+Use simple-zustand-devtools only in development.
+
+---
+
+# Forms
+
+Use:
+
+- React Hook Form
+- Zod
+
+Validation rules:
+
+Phone:
+
+- string
+- starts with 09
+
+OTP:
+
+- exactly 6 digits
+
+Never leave forms without validation.
+
+---
+
+# API
+
+Do not connect to backend yet.
+
+However, prepare the architecture.
+
+Create:
+
+```
+services/api-client.ts
+```
+
+using Axios.
+
+Future requests must use:
+
+- React Query
+- custom hooks
+
+Create empty hooks when necessary.
+
+---
+
+# React Query
+
+Configure:
+
+- QueryClient
+- QueryProvider
+- React Query Devtools
+
+Handle errors correctly.
+
+Use:
+
+- useQuery
+- useMutation
+
+where appropriate.
+
+---
+
+# Folder Structure
+
+Maintain a professional architecture.
+
+Example:
+
+```
+app/
+components/
+features/
+hooks/
+services/
+stores/
+types/
+utils/
+styles/
+```
+
+Do not place unrelated files together.
+
+---
+
+# Migration Priority
+
+Priority order:
+
+1. Visual parity with Magic Patterns
+2. Component architecture
+3. CSS Modules
+4. Zustand
+5. React Query setup
+6. Future backend readiness
+
+---
+
+# Important
+
+Do NOT redesign anything.
+
+The final result should visually match the Magic Patterns Preview as closely as possible.

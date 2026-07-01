@@ -1,9 +1,11 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { QueryProvider } from '@/providers/QueryProvider';
+import { AppLayout } from '@/components/layout/AppLayout';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Virtual Store Team Dashboard",
-  description: "Agentic AI Virtual Store Management Team",
+  title: 'مدیریت هوشمند',
+  description: 'Agentic AI Virtual Store Management Team',
 };
 
 export default function RootLayout({
@@ -12,8 +14,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="fa" dir="rtl">
+      <body>
+        <QueryProvider>
+          <AppLayout>{children}</AppLayout>
+        </QueryProvider>
+      </body>
     </html>
   );
 }

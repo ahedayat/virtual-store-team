@@ -1,0 +1,142 @@
+.node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 10;
+}
+
+.center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.top {
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@media (min-width: 768px) {
+  .top {
+    top: 15%;
+  }
+}
+
+.bottomRight {
+  bottom: 15%;
+  right: 15%;
+}
+
+@media (min-width: 768px) {
+  .bottomRight {
+    bottom: 20%;
+    right: 25%;
+  }
+}
+
+.bottomLeft {
+  bottom: 15%;
+  left: 15%;
+}
+
+@media (min-width: 768px) {
+  .bottomLeft {
+    bottom: 20%;
+    left: 25%;
+  }
+}
+
+.iconWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  border: 1px solid var(--champagne);
+  transition: all 0.5s;
+}
+
+@media (min-width: 768px) {
+  .iconWrap {
+    width: 5rem;
+    height: 5rem;
+  }
+}
+
+.iconWrapActive {
+  transform: scale(1.1);
+}
+
+.pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-2xl);
+  opacity: 0.2;
+  animation: agentPulse 2s ease-in-out infinite;
+}
+
+.pulseContent {
+  background: var(--agent-content);
+}
+
+.pulseSales {
+  background: var(--agent-sales);
+}
+
+.pulseSupport {
+  background: var(--agent-support);
+}
+
+.pulseCoordinator {
+  background: var(--agent-coordinator);
+}
+
+.icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+@media (min-width: 768px) {
+  .icon {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+}
+
+.iconContent {
+  color: var(--agent-content);
+}
+
+.iconSales {
+  color: var(--agent-sales);
+}
+
+.iconSupport {
+  color: var(--agent-support);
+}
+
+.iconCoordinator {
+  color: var(--agent-coordinator);
+}
+
+.label {
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(43, 39, 34, 0.05);
+  border: 1px solid rgba(239, 231, 218, 0.5);
+}
+
+@media (min-width: 768px) {
+  .label {
+    font-size: 0.875rem;
+  }
+}

@@ -1,0 +1,83 @@
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+:root {
+  /* Warm luxury palette */
+  --ivory: #f7f3ec;
+  --champagne: #efe7da;
+  --surface: #fffdf9;
+  --ink: #2b2722;
+  --muted: #8a8178;
+  /* Primary luxury gold / brown */
+  --gold: #b5893f;
+  --gold-soft: #d9b878;
+  --brown: #3a2e23;
+  /* Agent accents */
+  --content: #b1559e;   /* violet/rose */
+  --sales: #2f9e7e;     /* emerald */
+  --support: #2f7ed8;   /* blue/cyan */
+  --coordinator: #d39a2c; /* amber/gold */
+}
+html, body, #root {
+  height: 100%;
+}
+html {
+  direction: rtl;
+}
+body {
+  margin: 0;
+  font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
+  background-color: var(--ivory);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+/* Persian numerals friendly tabular spacing */
+.tnum { font-variant-numeric: tabular-nums; }
+/* Glass surface helper */
+.glass {
+  background: rgba(255, 253, 249, 0.7);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(181, 137, 63, 0.28); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(181, 137, 63, 0.45); }
+/* Pulsing glow used by active agent nodes */
+@keyframes agentPulse {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.18); opacity: 0; }
+}
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes dashFlow {
+  to { stroke-dashoffset: -24; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 37%, rgba(0,0,0,0.04) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+/* Animated aurora background for hero / constellation areas */
+.aurora {
+  background:
+    radial-gradient(60% 60% at 20% 20%, rgba(211,154,44,0.18), transparent 60%),
+    radial-gradient(50% 50% at 85% 15%, rgba(177,85,158,0.14), transparent 60%),
+    radial-gradient(55% 55% at 80% 85%, rgba(47,126,216,0.14), transparent 60%),
+    radial-gradient(50% 50% at 15% 90%, rgba(47,158,126,0.14), transparent 60%);
+}

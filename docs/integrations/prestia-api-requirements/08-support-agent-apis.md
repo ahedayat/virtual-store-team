@@ -1,0 +1,179 @@
+# Support Agent APIs
+
+APIs required by the **Support Agent** for Instagram DM analysis, reply drafts, and customer context.
+
+## Agent summary
+
+The Support Agent (`agents/support/`) analyzes sanitized message threads and produces `SupportInsights` (exposed as `SupportRunResponse` over HTTP). It:
+
+- Refuses out-of-scope requests (pricing changes, other agents, credentials)
+- Classifies themes (`generic_faq`, `product_question`, `refund_request`, etc.)
+- Generates `reply_drafts` with approval metadata
+- Does **not** send messages to customers
+
+Coordinator passes `context.messages` and derives `customer_message` + `channel` from threads (`agents/coordinator/nodes.py`). `fetch_recent_messages: False` in coordinator path.
+
+## Data flow
+
+```
+Prestia GET /messages/recent
+       ↓
+Botkonak sync (PII stored admin-side; bodies sanitized for AI)
+       ↓
+Context bundle messages → Support Agent POST /run
+```
+
+## Required Prestia API
+
+### GET Recent Message Threads
+
+See full contract in consolidated form below.
+
+| Property | Value |
+|----------|-------|
+| **API name** | Get Recent Message Threads |
+| **HTTP method** | `GET` |
+| **Suggested endpoint path** | `/v1/messages/recent` |
+| **Botkonak consumer** | Support Agent, Coordinator Agent, Background sync |
+| **Why Botkonak needs this** | Support analysis input. Coordinator extracts latest inbound customer message for `customer_message`. Thread history informs LLM context. |
+| **Requirement type** | Direct |
+| **Priority** | P0 |
+
+#### Required request headers
+
+`Authorization: Bearer <access_token>`, `Accept: application/json`
+
+#### Query parameters
+
+| Parameter | Type | Default | Max | Description |
+|-----------|------|---------|-----|-------------|
+| `thread_limit` | integer | 10 | 50 | Matches `build_recent_messages_summary` |
+| `messages_per_thread` | integer | 5 | 50 | Recent messages per thread |
+| `platform` | string | — | — | Filter e.g. `instagram` |
+| `status` | string | — | — | `open`, `pending`, `closed` |
+
+#### Successful response shape
+
+```json
+{
+  "generated_at": "2026-06-25T14:30:00+00:00",
+  "store_id": "22222222-2222-2222-2222-222222222222",
+  "thread_count": 2,
+  "threads": [
+    {
+      "thread_id": "55555555-5555-5555-5555-555555555555",
+      "external_thread_id": "prestia-thread-availability",
+      "customer_ref": "customer-66666666-6666-6666-6666-666666666666",
+      "platform": "instagram",
+      "channel": "instagram_dm",
+      "status": "open",
+      "subject": "Milano Leather Tote availability",
+      "last_message_at": "2026-06-25T12:00:00+00:00",
+      "messages": [
+        {
+          "message_id": "77777777-7777-7777-7777-777777777777",
+          "external_message_id": "prestia-msg-avail-001",
+          "direction": "inbound",
+          "sender_type": "customer",
+          "body": "سلام! کیف میلانو رنگ cognac موجوده؟",
+          "sent_at": "2026-06-25T11:48:00+00:00"
+        },
+        {
+          "message_id": "77777777-7777-7777-7777-777777777888",
+          "direction": "outbound",
+          "sender_type": "staff",
+          "body": "بله، موجودی محدود است.",
+          "sent_at": "2026-06-25T12:00:00+00:00"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Note:** Botkonak replaces emails/phones in `body` with `[EMAIL_REDACTED]` / `[PHONE_REDACTED]` before agents see text (`catalog/pii.py`). Prestia may return raw bodies; Botkonak connector sanitizes on ingest or at API boundary.
+
+#### Field mapping to Support Agent
+
+| Prestia / Django field | Support agent normalized field |
+|------------------------|--------------------------------|
+| `thread_id` | `thread_ref` |
+| `message_id` | `message_ref` |
+| `sender_type` | `sender_role` |
+| `body` | `text` |
+| `sent_at` | `created_at` |
+| `platform` + `channel` | `channel` (coordinator uses `instagram_dm`) |
+
+#### Pagination
+
+Bounded by `thread_limit` and `messages_per_thread`; not full history sync.
+
+#### Error cases
+
+`401`, `403`, `500`
+
+#### Example request
+
+```http
+GET /v1/messages/recent?thread_limit=10&messages_per_thread=5&platform=instagram HTTP/1.1
+Host: api.prestia.ir
+Authorization: Bearer prestia_at_abc123
+Accept: application/json
+```
+
+#### Related files
+
+- `backend/catalog/services.py` — `build_recent_messages_summary`
+- `backend/catalog/internal_views.py` — `InternalRecentMessagesView`
+- `agents/support/django_fetch.py` — `fetch_message_threads_from_django`
+- `agents/support/support_context.py` — normalization
+- `agents/coordinator/nodes.py` — `_derive_support_message_from_context`
+- `seed_prestia.py` — `PRESTIA_THREADS`, `PRESTIA_MESSAGES`
+- `docs/phases/step-3.4.md`
+
+## APIs NOT required (confirmed from codebase)
+
+| Data | Reason |
+|------|--------|
+| **FAQ database API** | FAQ is a **policy classification** (`generic_faq`) applied by `agents/support/approval_policy.py`, not loaded from Prestia |
+| **Suggested replies from Prestia** | Generated by Support Agent LLM |
+| **Message status updates / send reply** | No outbound Prestia write; `persist_actions: False` in coordinator |
+| **Risk flags from Prestia** | Computed by `approval_policy.py` and `refusal.py` |
+| **Customer PII in API** | `customer_ref` opaque ID only in AI path |
+
+## Optional Prestia APIs
+
+| API | Priority | Notes |
+|-----|----------|-------|
+| `GET /v1/orders/{id}` | P2 | Order-status questions in threads |
+| `GET /v1/customers` | P2 | Sync only; not for agent |
+| Webhook `message.received` | Future | Real-time support (see sync doc) |
+
+## Write API: Post Support Reply (Future)
+
+| Property | Value |
+|----------|-------|
+| **API name** | Send Support Reply |
+| **HTTP method** | `POST` |
+| **Suggested path** | `/v1/messages/threads/{thread_id}/replies` |
+| **Requirement type** | Optional (Future) |
+| **Priority** | Future |
+
+Botkonak `actions.execute` uses a stub handler with no external side effects (`backend/operations/tasks.py`). Future execution would need this API and scope `write:support_replies`.
+
+## Evidence from codebase
+
+| File | Relevance |
+|------|-----------|
+| `agents/support/analysis.py` | Runtime pipeline |
+| `agents/support/approval_policy.py` | FAQ policy (not Prestia FAQ data) |
+| `agents/support/refusal.py` | Scope guardrails |
+| `agents/support/injection_guard.py` | Prompt injection defense |
+| `docs/agents/support.md` | Agent documentation |
+| `docs/examples/support_output.json` | Output contract |
+
+## Open questions
+
+1. Does Prestia own Instagram DM integration or require a third-party inbox?
+2. Whether `channel` should always be `instagram_dm` for Prestia Instagram messages.
+3. Message import format for `import_messages_json` vs live API shape alignment.

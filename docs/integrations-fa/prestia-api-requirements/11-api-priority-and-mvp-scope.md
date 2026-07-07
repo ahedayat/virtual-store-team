@@ -1,130 +1,127 @@
 <div dir="rtl" align="right">
 
-# Priority و Scope مربوط به APIها برای MVP
+# اولویت API و Scope MVP
 
-این سند، همه APIهای Prestia را که در این مجموعه مستندات شناسایی شده‌اند، دسته‌بندی می‌کند.
+دسته‌بندی همه APIهای Prestia مستندشده برای integration Botkonak.
 
-## راهنمای Priority
+## راهنمای اولویت
 
-| Priority   | Meaning                                                                            |
-| ---------- | ---------------------------------------------------------------------------------- |
-| **P0**     | برای MVP لازم است — workflow مربوط به daily report بدون این داده نمی‌تواند کار کند |
-| **P1**     | مهم است — برای sync قابل‌اعتماد، reconciliation یا کیفیت عملیاتی لازم است          |
-| **P2**     | خوب است داشته باشیم — بعضی flowهای خاص را بهتر می‌کند، اما blocker نیست            |
-| **Future** | برای integration اولیه Botkonak + Prestia لازم نیست                                |
+| Priority | Meaning |
+|----------|---------|
+| **P0** | لازم برای MVP — workflow daily report بدون این داده کار نمی‌کند |
+| **P1** | مهم — برای integration قابل‌اعتماد یا کیفیت عملیاتی لازم است |
+| **P2** | خوب است داشته باشیم — جریان‌های خاص را بهتر می‌کند اما blocking نیست |
+| **Future** | برای integration اولیه Botkonak + Prestia لازم نیست |
 
-## راهنمای Requirement Type
+## راهنمای نوع نیازمندی
 
-| Type              | Meaning                                                                        |
-| ----------------- | ------------------------------------------------------------------------------ |
-| **Direct**        | به‌صورت صریح توسط code pathهای موجود در Botkonak لازم است                      |
-| **Inferred**      | از نظر منطقی برای integration لازم است، اما connector/sync هنوز ساخته نشده است |
-| **Optional**      | enhancement مفید است؛ اما dependency فعلی در کد ندارد                          |
-| **Open question** | از روی codebase قابل تأیید نیست                                                |
+| Type | Meaning |
+|------|---------|
+| **Direct** | صریحاً در contract integration بازنگری‌شده لازم است |
+| **Inferred** | از نظر منطقی برای integration لازم است اما connector هنوز ساخته نشده |
+| **Optional** | enhancement مفید؛ وابستگی کد فعلی ندارد |
 
 ---
 
 ## P0 — لازم برای MVP
 
-| API                     | Method | Endpoint                  | Used by                         | Type     |
-| ----------------------- | ------ | ------------------------- | ------------------------------- | -------- |
-| OAuth Authorization     | `GET`  | `/oauth/authorize`        | Onboarding                      | Inferred |
-| OAuth Token             | `POST` | `/v1/oauth/token`         | Background sync                 | Inferred |
-| Get Store Profile       | `GET`  | `/v1/store`               | Coordinator، Content، Dashboard | Direct   |
-| List Products           | `GET`  | `/v1/products`            | Content، Coordinator            | Direct   |
-| Get Sales Summary       | `GET`  | `/v1/sales/summary`       | Sales، Coordinator              | Direct   |
-| Get Low Stock Inventory | `GET`  | `/v1/inventory/low-stock` | Sales، Coordinator              | Direct   |
-| Get Recent Messages     | `GET`  | `/v1/messages/recent`     | Support، Coordinator            | Direct   |
+| API | Method | Endpoint | Used by | Type |
+|-----|--------|----------|---------|------|
+| OAuth Authorization | `GET` | `/oauth/authorize` | Onboarding | Inferred |
+| OAuth Token | `POST` | `/v1/oauth/token` | On-demand fetch | Inferred |
+| List Products | `GET` | `/v1/products` | Content، Sales، Coordinator | Direct |
+| List Orders | `GET` | `/v1/orders` | Sales، Coordinator | Direct |
+| List FAQs | `GET` | `/v1/faqs` | Support | Direct |
+| Website message webhook | `POST` | Botkonak receiver | Support | Direct |
 
-**خروجی MVP:** manager فروشگاه Prestia را connect می‌کند → Botkonak داده‌های P0 را sync می‌کند → daily report خروجی‌های Sales Agent، Content Agent و Support Agent را تولید می‌کند.
+**نتیجه MVP:** manager فروشگاه Prestia را وصل می‌کند → Botkonak tenant settings را پیکربندی می‌کند → on-demand fetch Prestia + messageهای webhook → daily report خروجی Sales، Content و Support Agent تولید می‌کند.
+
+**P0 سمت Prestia نیست:** store profile API، sales summary API، message polling API.
 
 ---
 
-## P1 — مهم، اما blocker نیست
+## P1 — مهم اما blocking نیست
 
-| API                    | Method | Endpoint                            | Used by                               | Type     |
-| ---------------------- | ------ | ----------------------------------- | ------------------------------------- | -------- |
-| OAuth Token Revocation | `POST` | `/v1/oauth/revoke`                  | Dashboard disconnect                  | Inferred |
-| OAuth Token Refresh    | `POST` | `/v1/oauth/token`، با refresh grant | Background sync                       | Inferred |
-| List Categories        | `GET`  | `/v1/categories`                    | Background sync                       | Inferred |
-| List Inventory         | `GET`  | `/v1/inventory`                     | Background sync                       | Inferred |
-| List Orders            | `GET`  | `/v1/orders`                        | Background sync، sales reconciliation | Inferred |
-| Aggregated Context     | `GET`  | `/v1/context`                       | connector optimization                | Inferred |
+| API | Method | Endpoint | Used by | Type |
+|-----|--------|----------|---------|------|
+| OAuth Token Revocation | `POST` | `/v1/oauth/revoke` | Dashboard disconnect | Inferred |
+| OAuth Token Refresh | `POST` | `/v1/oauth/token` (refresh grant) | On-demand fetch | Inferred |
+| List Categories | `GET` | `/v1/categories` | Connector | Inferred |
+| List Customers | `GET` | `/v1/customers` | Support CRM | Inferred |
+| Customer Order History | `GET` | `/v1/customer/{tenant_customer_id}/orders` | Support، Sales | Inferred |
+| Aggregated Context | `GET` | `/v1/context` | بهینه‌سازی connector | Inferred |
 
 ---
 
 ## P2 — خوب است داشته باشیم
 
-| API                 | Method | Endpoint            | Used by         | Type     |
-| ------------------- | ------ | ------------------- | --------------- | -------- |
-| Get Product Detail  | `GET`  | `/v1/products/{id}` | Content Agent   | Inferred |
-| Get Order Detail    | `GET`  | `/v1/orders/{id}`   | Support Agent   | Inferred |
-| List Customers      | `GET`  | `/v1/customers`     | Background sync | Inferred |
-| Get Tenant Settings | `GET`  | `/v1/tenant`        | Content Agent   | Inferred |
+| API | Method | Endpoint | Used by | Type |
+|-----|--------|----------|---------|------|
+| Get Product Detail | `GET` | `/v1/products/{slug}` | Content Agent | Inferred |
+| Get Order Detail | `GET` | `/v1/orders/{order_id}` | Support Agent | Inferred |
 
 ---
 
 ## Future / optional
 
-| API                        | Method  | Endpoint                            | Used by                  | Type                                                        |
-| -------------------------- | ------- | ----------------------------------- | ------------------------ | ----------------------------------------------------------- |
-| List Draft/Pending Orders  | `GET`   | `/v1/orders?status=draft,pending`   | Sales follow-up          | Optional                                                    |
-| Customer Order History     | `GET`   | `/v1/customers/{id}/orders`         | Sales follow-up          | Optional                                                    |
-| Send Support Reply         | `POST`  | `/v1/messages/threads/{id}/replies` | action execution         | Optional                                                    |
-| Update Product Description | `PATCH` | `/v1/products/{id}`                 | content action execution | Optional                                                    |
-| Apply Discount             | `POST`  | `/v1/promotions`                    | sales action execution   | Optional                                                    |
-| Analytics / slow-movers    | `GET`   | `/v1/analytics/...`                 | Sales Agent              | Optional                                                    |
-| FAQ content API            | `GET`   | `/v1/faqs`                          | Support Agent            | Optional — agent از policy codeها استفاده می‌کند، نه FAQ DB |
-| Webhooks، همه eventها      | `POST`  | Botkonak webhook receiver           | Background sync          | Optional                                                    |
+| API | Method | Endpoint | Used by | Type |
+|-----|--------|----------|---------|------|
+| List Draft/Pending Orders | `GET` | `/v1/orders?status=draft,pending` | Sales follow-up | Optional |
+| Send Support Reply | Outbound | Platform APIها | Action execution | Optional |
+| Update Product Description | `PATCH` | `/v1/products/{slug}` | Content action execution | Optional |
+| Apply Discount | `POST` | `/v1/promotions` | Sales action execution | Optional |
+| Data webhookها (products، orders) | `POST` | Botkonak receiver | بهینه‌سازی latency | Optional |
 
 ---
 
-## مجموعه OAuth Scopeهای MVP
+## مجموعه scope OAuth برای MVP
 
-حداقل scopeهای لازم برای APIهای P0:
+حداقل scopeها برای APIهای P0:
+
+<div dir="ltr" align="left">
+
+```
+read:products read:orders read:customers read:faqs
+```
 
 </div>
 
-```text
-read:store read:products read:inventory read:orders read:support_messages read:analytics
-```
+`read:store` و `read:analytics` **لازم نیستند** — تنظیمات store محلی Botkonak است؛ analytics sales از orders محاسبه می‌شود.
 
-<div dir="rtl" align="right">
+webhookهای Instagram/Telegram از credentialهای platform استفاده می‌کنند، نه scope OAuth Prestia.
 
-`read:analytics` در صورتی استفاده می‌شود که sales summary اختصاصی به‌عنوان analytics endpoint پیاده‌سازی شود.
-
-**برای MVP لازم نیست:** scopeهای `write:*`، چون در Botkonak هیچ write path فعالی وجود ندارد.
+**برای MVP لازم نیست:** scopeهای `write:*` (write path در Botkonak نیست).
 
 ---
 
 ## سؤال‌های باز
 
-| #   | Question                                                     | Impact                          |
-| --- | ------------------------------------------------------------ | ------------------------------- |
-| 1   | base URL و versioning مربوط به Prestia API                   | مثال‌های documentation          |
-| 2   | sync کردن داده‌ها داخل Django در برابر runtime Prestia proxy | معماری connector                |
-| 3   | endpoint تجمیعی `/v1/context` در برابر endpointهای جداگانه   | طراحی API در سمت Prestia        |
-| 4   | منبع Instagram DM در Prestia                                 | امکان‌پذیری P0 برای Support     |
-| 5   | نگاشت order statusها                                         | دقت revenue در Sales            |
-| 6   | variant modeling                                             | sync مربوط به Product/Inventory |
-| 7   | فارسی، یعنی `fa`، به‌عنوان زبان اصلی catalog                 | زبان خروجی Content Agent        |
-| 8   | سیاست stale data هنگام sync failure                          | قابلیت اعتماد report            |
-| 9   | نوع OAuth flow؛ auth code در برابر client credentials        | UX مربوط به Onboarding          |
-| 10  | rate limitها برای initial bulk sync                          | performance مربوط به connector  |
+| # | Question | Impact |
+|---|----------|--------|
+| 1 | Prestia API base URL و versioning | exampleهای مستندات |
+| 2 | On-demand fetch در مقابل sync-into-Django | معماری connector |
+| 3 | `/v1/context` aggregate در مقابل endpointهای مجزا | طراحی API سمت Prestia |
+| 4 | schema payload webhook chat وب‌سایت | امکان‌پذیری Support P0 |
+| 5 | mapping وضعیت order | دقت revenue sales |
+| 6 | مدل‌سازی variant `inventories[]` product | دقت سیگنال inventory |
+| 7 | فارسی (`fa`) به‌عنوان زبان اصلی catalog | زبان خروجی Content Agent |
+| 8 | سیاست داده stale هنگام شکست fetch | قابلیت اطمینان report |
+| 9 | نوع OAuth flow (auth code در مقابل client credentials) | UX onboarding |
+| 10 | rate limit برای on-demand bulk fetch | عملکرد connector |
 
 ---
 
 ## شواهد از codebase
 
-تخصیص priorityها بر اساس موارد زیر انجام شده است:
+تخصیص اولویت بر اساس:
 
-- `backend/catalog/context.py` — sectionهای context bundle؛ داده‌های P0
-- `agents/coordinator/nodes.py` — workflow مربوط به daily report
-- `backend/operations/tasks.py` — trigger مربوط به report generation
-- `frontend/hooks/*.ts` — dashboard فعلاً فقط mock است؛ live Prestia readها مربوط به آینده هستند
-- `backend/operations/tasks.py` — stub مربوط به `execute_action`؛ writeها مربوط به آینده هستند
+- `backend/catalog/context.py` — بخش‌های context bundle (داده P0)
+- `agents/coordinator/nodes.py` — workflow daily report
+- `backend/operations/tasks.py` — trigger تولید گزارش
+- `frontend/hooks/*.ts` — dashboard فقط mock (Future برای read زنده Prestia)
+- `backend/operations/tasks.py` — stub `execute_action` (Future برای write)
 
-## Non-goals؛ مرور مجدد
+## Non-goals (خلاصه)
 
 به [README.md](./README.md#non-goals) مراجعه کنید.
 

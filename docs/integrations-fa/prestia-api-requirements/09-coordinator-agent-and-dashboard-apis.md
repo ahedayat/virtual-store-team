@@ -2,155 +2,140 @@
 
 # APIهای Coordinator Agent و Dashboard
 
-APIهایی که **Coordinator Agent** و **admin dashboard** برای daily reportها، orchestration و workflowهای manager به آن‌ها نیاز دارند.
+APIهای موردنیاز **Coordinator Agent** و **admin dashboard** برای گزارش روزانه، orchestration و workflowهای manager.
 
-## نکته معماری
+## یادداشت معماری
 
-در codebase فعلی، Coordinator و dashboard **مستقیماً Prestia را فراخوانی نمی‌کنند**. آن‌ها از **داده‌های Django در Botkonak** استفاده می‌کنند؛ داده‌هایی که در آینده از طریق connector از Prestia populate می‌شوند. این سند دو مورد را map می‌کند:
+Coordinator و dashboard در codebase فعلی **مستقیماً Prestia را فراخوانی نمی‌کنند**. آن‌ها **داده Django Botkonak** را مصرف می‌کنند (از Prestia از طریق connector آینده پر می‌شود). این سند map می‌کند:
 
-1. Prestia باید چه چیزهایی را expose کند تا Botkonak بتواند معادل **context bundle** را بسازد.
-2. Dashboard به‌صورت غیرمستقیم و از طریق داده‌های sync‌شده به چه چیزهایی نیاز دارد.
+1. Prestia چه چیزی باید expose کند تا Botkonak **معادل context bundle** بسازد
+2. dashboard چه چیزی را به‌صورت غیرمستقیم از داده sync‌شده نیاز دارد
 
 ---
 
-## Coordinator Agent: معادل Context Bundle
+## Coordinator Agent: معادل context bundle
 
-node مربوط به `fetch_context` در Coordinator، endpoint زیر را در Django فراخوانی می‌کند:
+node `fetch_context` در coordinator Django را فراخوانی می‌کند:
 
-</div>
+`GET /internal/ai/context/{report_run_id}/` (`agents/coordinator/nodes.py`)
 
-```text
-GET /internal/ai/context/{report_run_id}/
-```
+این همه read APIهای Prestia لازم برای یک daily report را bundle می‌کند:
 
-<div dir="rtl" align="right">
+| بخش context bundle | منبع داده | Doc |
+|--------------------|-----------|-----|
+| `tenant`، `store` | Botkonak tenant/store settings | [02-store-profile-apis.md](./02-store-profile-apis.md) |
+| `products` | `GET /v1/products` (on demand) | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
+| `sales_summary` | محاسبه Botkonak از `GET /v1/orders` | [04-order-and-sales-apis.md](./04-order-and-sales-apis.md) |
+| `inventory` | استخراج از `inventories[]` در `GET /v1/products` | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
+| `messages` | webhook-ingested به inbox Botkonak | [08-support-agent-apis.md](./08-support-agent-apis.md) |
+| `warnings` | خطاهای جزئی هنگام fetch/aggregation | ساخته‌شده توسط Botkonak connector |
 
-این endpoint همه read APIهای لازم از Prestia را برای یک daily report در قالب یک bundle جمع می‌کند:
+### API: Aggregated Store Context (میانبر اختیاری Prestia)
 
-| Context bundle section | منبع API در Prestia                  | Doc                                                                    |
-| ---------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
-| `tenant`, `store`      | `GET /v1/store`                      | [02-store-profile-apis.md](./02-store-profile-apis.md)                 |
-| `products`             | `GET /v1/products`                   | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
-| `sales_summary`        | `GET /v1/sales/summary`              | [04-order-and-sales-apis.md](./04-order-and-sales-apis.md)             |
-| `inventory`            | `GET /v1/inventory/low-stock`        | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
-| `messages`             | `GET /v1/messages/recent`            | [08-support-agent-apis.md](./08-support-agent-apis.md)                 |
-| `warnings`             | failureهای partial هنگام aggregation | توسط Botkonak connector ساخته می‌شود                                   |
-
-### API: Aggregated Store Context؛ shortcut اختیاری در Prestia
-
-| Property                               | Value                                                                                                                                      |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **نام API**                            | Get Aggregated Store Context                                                                                                               |
-| **HTTP method**                        | `GET`                                                                                                                                      |
-| **مسیر endpoint پیشنهادی**             | `/v1/context`                                                                                                                              |
-| **مصرف‌کننده در Botkonak**             | Background sync، Coordinator از طریق connector                                                                                             |
-| **چرا Botkonak به این API نیاز دارد؟** | جایگزینی با یک round-trip برای پنج endpoint قبل از daily report. اگر Botkonak context را به‌صورت local compose کند، این API **لازم نیست**. |
-| **نوع نیازمندی**                       | Inferred                                                                                                                                   |
-| **Priority**                           | P1                                                                                                                                         |
+| Property | Value |
+|----------|-------|
+| **API name** | Get Aggregated Store Context |
+| **HTTP method** | `GET` |
+| **Suggested endpoint path** | `/v1/context` |
+| **Botkonak consumer** | Background sync، Coordinator (از طریق connector) |
+| **Why Botkonak needs this** | جایگزین single round-trip برای پنج endpoint قبل از daily report. **لازم نیست** اگر Botkonak به‌صورت local compose کند. |
+| **Requirement type** | Inferred |
+| **Priority** | P1 |
 
 #### Query parameterها
 
-| Parameter      | Description                                                      |
-| -------------- | ---------------------------------------------------------------- |
-| `include`      | مقدارهای comma-separated مثل `products,sales,inventory,messages` |
-| `reference_at` | برای محاسبه sales periodها                                       |
+| Parameter | Description |
+|-----------|-------------|
+| `include` | جدا شده با کاما: `products,orders,faqs` |
+| `reference_at` | برای محاسبه دوره sales (سمت Botkonak) |
 
-#### ساختار response موفق
+#### شکل successful response
 
-همان keyهای top-level در context bundle مربوط به Botkonak؛ مطابق example در `docs/phases/step-3.5.md`، با این تفاوت که `report_run_id` وجود ندارد، چون Botkonak آن را اضافه می‌کند.
+همان کلیدهای سطح بالای context bundle Botkonak (نمونه `docs/phases/step-3.5.md`)، منهای `report_run_id` (Botkonak آن را اضافه می‌کند).
 
 #### فایل‌های مرتبط
 
-- `backend/catalog/context.py` — تابع `build_context_bundle`
+- `backend/catalog/context.py` — `build_context_bundle`
 - `docs/phases/step-3.5.md`
 
 ---
 
-## Workflow مربوط به Coordinator؛ داخلی Botkonak، نه Prestia
+## Workflow Coordinator (داخلی Botkonak، نه Prestia)
 
-برای کامل بودن تصویر، موارد زیر آورده شده‌اند؛ اما این‌ها APIهای Prestia **نیستند**:
+برای کامل بودن — این‌ها **API Prestia نیستند**:
 
-| Method | مسیر داخلی Botkonak                       | Purpose                                               |
-| ------ | ----------------------------------------- | ----------------------------------------------------- |
-| `GET`  | `/internal/ai/context/{report_run_id}/`   | دریافت context؛ داده از طریق sync از Prestia آمده است |
-| `POST` | `/internal/ai/agent-outputs/`             | persist کردن خروجی‌های specialistها                   |
-| `POST` | `/internal/ai/report-runs/{id}/complete/` | ارسال merged daily report                             |
+| Method | مسیر داخلی Botkonak | Purpose |
+|--------|---------------------|---------|
+| `GET` | `/internal/ai/context/{report_run_id}/` | fetch context (داده از Prestia از طریق sync) |
+| `POST` | `/internal/ai/agent-outputs/` | persist خروجی specialistها |
+| `POST` | `/internal/ai/report-runs/{id}/complete/` | ارسال daily report merge‌شده |
 
-Coordinator با استفاده از context مشتق‌شده از داده‌های Prestia، specialist agentها را trigger می‌کند؛ فایل `agents/coordinator/graph.py`.
+Coordinator specialist agentها را با context مشتق‌شده از داده منبع Prestia trigger می‌کند (`agents/coordinator/graph.py`).
 
-### فیلدهای Merged Daily Report؛ مبتنی بر داده‌های Prestia
+### fieldهای daily report merge‌شده (از داده منبع Prestia)
 
-تابع `build_merged_daily_report` در فایل `agents/coordinator/merge.py` شامل موارد زیر است:
+`build_merged_daily_report` (`agents/coordinator/merge.py`) شامل:
 
-| Field                                     | وابستگی به داده Prestia                               |
-| ----------------------------------------- | ----------------------------------------------------- |
-| `sales_summary`                           | Sales summary API                                     |
-| `prioritized_actions`                     | از Sales Agent؛ وابسته به sales + inventory           |
-| `content_suggestions`                     | از Content Agent؛ وابسته به products + store settings |
-| `support_insights`                        | از Support Agent؛ وابسته به messages                  |
-| `warnings`, `partial`, `missing_sections` | pipeline metadata                                     |
-
----
-
-## APIهای Dashboard؛ در Botkonak، اما داده‌ها در اصل از Prestia آمده‌اند
-
-Dashboard در Next.js، **APIهای REST مربوط به Botkonak** را می‌خواند، نه Prestia را. Prestia باید داده‌های زیربنایی را از طریق sync فراهم کند.
-
-| Dashboard feature    | Botkonak API                                  | داده لازم از Prestia                         |
-| -------------------- | --------------------------------------------- | -------------------------------------------- |
-| Trigger daily report | `POST /api/reports/generate/`                 | catalog، orders و messages تازه              |
-| Report list/detail   | `GET /api/reports/`، `GET /api/reports/{id}/` | merged report از agent run                   |
-| Actions list/approve | `GET /api/actions/`، `POST .../approve/`      | recommendationهای agent؛ نه write به Prestia |
-| History feed         | `GET /api/history/`                           | actions، reports و events                    |
-| Store profile        | `GET /api/stores/{store_id}/`                 | Store profile API                            |
-
-### Store detail برای Dashboard
-
-| Property                   | Value                                  |
-| -------------------------- | -------------------------------------- |
-| **Prestia API**            | `GET /v1/store`                        |
-| **مصرف‌کننده در Botkonak** | Admin Dashboard                        |
-| **نوع نیازمندی**           | Direct؛ به‌صورت غیرمستقیم از طریق sync |
-| **Priority**               | P0                                     |
-
-Frontend hookهایی مثل `use-products`، `use-customers`، `use-recommendations` و `use-content-items` هنوز از **mock data** استفاده می‌کنند و به Django APIها وصل نشده‌اند. integration مربوط به Prestia برای فهرست product/customer در dashboard مربوط به آینده است؛ یعنی زمانی که hookها پیاده‌سازی شوند.
+| Field | وابستگی داده |
+|-------|--------------|
+| `sales_summary` | aggregation Botkonak از orderهای Prestia |
+| `prioritized_actions` | از Sales Agent (orders + product inventories) |
+| `content_suggestions` | از Content Agent (products + Botkonak tenant settings) |
+| `support_insights` | از Support Agent (messageهای webhook + FAQها) |
+| `warnings`، `partial`، `missing_sections` | metadata pipeline |
 
 ---
 
-## Agent Activity و Task Status
+## APIهای Dashboard (Botkonak — داده اصلی از Prestia)
 
-| Need                | Source in Botkonak                 | Prestia API? |
-| ------------------- | ---------------------------------- | ------------ |
-| Report run status   | مدل `ReportRun` و Celery task      | No           |
-| Agent outputs       | مدل `AgentOutput`                  | No           |
-| Task progress       | HTTP response مربوط به Coordinator | No           |
-| Specialist timeouts | warningهای Coordinator             | No           |
+dashboard Next.js **API REST Botkonak** را می‌خواند، نه Prestia. Prestia باید داده زیرین را از طریق sync تأمین کند.
 
-برای orchestration metadata، **هیچ API از Prestia لازم نیست**.
+| قابلیت Dashboard | API Botkonak | داده Prestia موردنیاز |
+|------------------|--------------|----------------------|
+| trigger daily report | `POST /api/reports/generate/` | catalog/orders/messageهای تازه |
+| لیست/جزئیات گزارش | `GET /api/reports/`، `GET /api/reports/{id}/` | گزارش merge‌شده از agent run |
+| لیست/تأیید action | `GET /api/actions/`، `POST .../approve/` | recommendation agent (نه write Prestia) |
+| feed تاریخچه | `GET /api/history/` | actionها، گزارش‌ها، eventها |
+| store profile | `GET /api/stores/{store_id}/` | Botkonak tenant/store settings (نه API Prestia) |
+
+hookهای frontend (`use-products`، `use-customers`، `use-recommendations`، `use-content-items`) هنوز از **mock data** استفاده می‌کنند — به API Django وصل نیستند. integration Prestia برای لیست product/customer در dashboard وقتی hookها پیاده شوند Future است.
 
 ---
 
-## Recommendationها در Dashboard
+## فعالیت agent و وضعیت task
 
-Actionها و recommendationها **داخل Botkonak و توسط agentها** ساخته می‌شوند؛ مدل `operations.models.Action`. این موارد از Prestia fetch نمی‌شوند. Prestia فقط **inputها** را فراهم می‌کند؛ یعنی sales، inventory، products و messages.
+| نیاز | منبع در Botkonak | API Prestia؟ |
+|------|------------------|--------------|
+| وضعیت report run | model `ReportRun`، Celery task | خیر |
+| خروجی agent | model `AgentOutput` | خیر |
+| پیشرفت task | response HTTP Coordinator | خیر |
+| timeout specialist | warningهای Coordinator | خیر |
+
+**هیچ API Prestia** برای metadata orchestration لازم نیست.
+
+---
+
+## recommendationها در dashboard
+
+action/recommendationها **داخل Botkonak توسط agentها ساخته می‌شوند** (`operations.models.Action`)، نه از Prestia fetch می‌شوند. Prestia **ورودی** (orders، products، FAQها) را تأمین می‌کند؛ messageها از webhook می‌آیند.
 
 ---
 
 ## شواهد از codebase
 
-| File                              | Relevance                                |
-| --------------------------------- | ---------------------------------------- |
-| `agents/coordinator/nodes.py`     | nodeهای workflow و payloadهای specialist |
-| `agents/coordinator/merge.py`     | شکل merged report                        |
-| `backend/operations/tasks.py`     | Celery task به نام `generate_daily`      |
-| `backend/operations/views.py`     | APIهای dashboard برای report/action      |
-| `backend/operations/urls.py`      | routeهای dashboard                       |
-| `frontend/app/dashboard/page.tsx` | UI مربوط به Dashboard                    |
-| `docs/agents/coordinator.md`      | مستندات Coordinator                      |
+| File | Relevance |
+|------|-----------|
+| `agents/coordinator/nodes.py` | nodeهای workflow، payload specialist |
+| `agents/coordinator/merge.py` | شکل گزارش merge‌شده |
+| `backend/operations/tasks.py` | Celery task `generate_daily` |
+| `backend/operations/views.py` | API گزارش/action dashboard |
+| `backend/operations/urls.py` | routeهای dashboard |
+| `frontend/app/dashboard/page.tsx` | UI dashboard |
+| `docs/agents/coordinator.md` | مستندات Coordinator |
 
 ## سؤال‌های باز
 
-1. timeline مربوط به live wiring داشبورد به Django در برابر mock data چیست؟
-2. آیا managerها قبل از report generation باید بتوانند از dashboard به‌صورت manual، re-sync از Prestia را trigger کنند؟
+1. timeline وصل کردن dashboard زنده به Django در مقابل mock data.
+2. آیا manager قبل از تولید گزارش re-sync Prestia را از dashboard به‌صورت دستی trigger می‌کند.
 
 </div>

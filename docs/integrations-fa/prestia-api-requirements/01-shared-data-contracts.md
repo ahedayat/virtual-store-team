@@ -1,46 +1,46 @@
 <div dir="rtl" align="right">
 
-# قراردادهای مشترک Data Contracts
+# Contractهای داده مشترک
 
-قراردادها و conventionهای مشترک برای APIهای Prestia که توسط Botkonak مصرف می‌شوند.
+قراردادهای مشترک برای APIهای Prestia که Botkonak مصرف می‌کند.
 
 ## اصول طراحی
 
-1. **هماهنگی با normalized shapes در Botkonak**؛ در جاهایی که این ساختارها از قبل در `backend/catalog/services.py` و `backend/catalog/context.py` وجود دارند، Prestia باید تا حد امکان با همان شکل‌های استاندارد Botkonak هماهنگ باشد.
-2. **نام‌گذاری پایدار fieldها**؛ در responseهای Prestia از نام‌های بومی خود Prestia استفاده شود، اما mapping آن‌ها به نام‌های internal در Botkonak مستند شود.
-3. **کاهش PII در مسیرهای AI**؛ بدنه‌ی پیام‌های Support ممکن است شامل متن مشتری باشد. Prestia می‌تواند متن خام را برگرداند، اما Botkonak قبل از اینکه agentها داده را مصرف کنند، emailها و شماره‌تلفن‌ها را با استفاده از `backend/catalog/pii.py` حذف یا redact می‌کند.
-4. **فقط JSON**؛ برای requestها و responseها باید از `Content-Type: application/json` استفاده شود.
+1. **هم‌راستا با شکل‌های normalize‌شده Botkonak** جایی که در `backend/catalog/services.py` و `backend/catalog/context.py` وجود دارند.
+2. **نام field پایدار** — در responseهای Prestia از نام‌های native Prestia استفاده شود؛ mapping به نام‌های داخلی Botkonak مستند شود.
+3. **کاهش PII برای مسیرهای AI** — bodyهای message ممکن است متن customer داشته باشند؛ Prestia ممکن است متن خام برگرداند و Botkonak قبل از مصرف توسط agentها email/phone را redact می‌کند (`backend/catalog/pii.py`).
+4. **فقط JSON** — `Content-Type: application/json` برای request و response.
 
 ## شناسه‌ها
 
-| مفهوم | field پیشنهادی در Prestia | field داخلی در Botkonak | نکات |
+| Concept | Prestia field (پیشنهادی) | Botkonak internal field | Notes |
 |---------|---------------------------|-------------------------|-------|
-| Store | `id`، به‌صورت UUID یا stable string | `store.id` | هنگام connector onboarding مپ می‌شود. |
-| Tenant | `tenant_id` یا به‌صورت implicit از روی token | `tenant.id` | Botkonak یک tenant محلی ایجاد می‌کند. |
-| Product | `id` | `product_id` در AI bundle | در Content Agent، alias با نام `product_id` هم پذیرفته می‌شود. |
-| Category | `id` | `category.id` | داخل context bundle، زیرمجموعه‌ی product قرار می‌گیرد. |
-| Order | `id`، `order_number` | `order_number`، `external_id` | مقدار `external_id` شناسه‌ی order در Prestia را نگه می‌دارد. |
-| Customer | `id` | مقدار opaque مانند `customer-{uuid}` در AI APIs | PII خام به agentها پاس داده نمی‌شود. |
-| Message thread | `id`، `external_thread_id` | `thread_id` |  |
-| Message | `id`، `external_message_id` | `message_id` |  |
+| Store | `id` (UUID یا string پایدار) | `store.id` | در onboarding connector map می‌شود |
+| Tenant | `tenant_id` یا implicit از token | `tenant.id` | Botkonak tenant محلی می‌سازد |
+| Product | `slug` | `product_id` در AI bundle | شناسه اصلی؛ همچنین map به UUID محلی |
+| Category | `slug` | `category.slug` | nested زیر product در context bundle |
+| Order | `order_id` | `order_number`، `external_id` | `external_id` شناسه order Prestia را نگه می‌دارد |
+| Customer | `tenant_user_id` | `customer-{uuid}` مبهم در AI APIها | PII خام به agentها داده نمی‌شود |
+| Message thread | `id`، `external_thread_id` | `thread_id` | |
+| Message | `id`، `external_message_id` | `message_id` | |
 
 ## Timestampها
 
-- از ISO 8601 همراه با timezone offset استفاده شود؛ برای مثال: `"2026-06-25T12:00:00+00:00"`.
-- fieldهای Botkonak عبارت‌اند از: `created_at`، `updated_at`، `placed_at`، `sent_at`، `last_message_at`، `generated_at`.
+- ISO 8601 با timezone offset، مثلاً `"2026-06-25T12:00:00+00:00"`.
+- fieldهای Botkonak: `created_at`، `updated_at`، `placed_at`، `sent_at`، `last_message_at`، `generated_at`.
 
 ## پول و currency
 
-- مبلغ‌ها باید به‌صورت **decimal string** با دو رقم اعشار ارسال شوند؛ برای مثال: `"189.00"`. این روش با serialization مربوط به `DecimalField` در Django سازگار است.
-- مقدار `currency` باید به‌صورت کد ISO 4217 باشد؛ برای مثال: `"USD"` یا `"IRR"`.
-- currency پیش‌فرض در سطح Store داخل store profile مشخص می‌شود.
+- مبالغ پولی به‌صورت **number** (مثلاً `189.00`) یا decimal string — Prestia باید فرمت را مستند کند؛ Botkonak هنگام ingest normalize می‌کند.
+- `currency` به‌صورت کد ISO 4217، مثلاً `"USD"`، `"IRR"`.
+- currency پیش‌فرض در **Botkonak tenant settings** تنظیم می‌شود، نه از Prestia fetch می‌شود.
 
-## enum مربوط به وضعیت Order
+## enum وضعیت order
 
-مقادیر `OrderStatus` در Botkonak در فایل `backend/catalog/models.py` تعریف شده‌اند:
+Botkonak `OrderStatus` (`backend/catalog/models.py`):
 
-| Status | آیا در sales summary به‌عنوان revenue حساب می‌شود؟ |
-|--------|-----------------------------------|
+| Status | در sales summary revenue شمارش می‌شود؟ |
+|--------|--------------------------------------|
 | `paid` | بله |
 | `completed` | بله |
 | `fulfilled` | بله |
@@ -50,31 +50,31 @@
 | `refunded` | خیر |
 | `failed` | خیر |
 
-Prestia باید وضعیت‌های order خودش را به این مقدارها map کند. راه دیگر این است که یک mapping table داخل connector مستند شود.
+Prestia باید وضعیت‌های order خود را به این مقادیر map کند (یا جدول mapping را در connector مستند کند).
 
-## enum مربوط به Platform در Support
+## enum platform (support)
 
-گزینه‌های `Platform` در Botkonak عبارت‌اند از: `instagram`، `whatsapp`، `email`، `web`، `manual`.
+گزینه‌های Botkonak `Platform`: `instagram`، `whatsapp`، `email`، `web`، `telegram`، `manual`.
 
-وقتی Support Agent Coordinator پیام‌ها را از context استخراج می‌کند، مقدار پیش‌فرض channel را `instagram_dm` در نظر می‌گیرد. این رفتار در `agents/coordinator/nodes.py` پیاده‌سازی شده است. بنابراین Prestia برای Instagram DMها باید از `platform: "instagram"` استفاده کند.
+Coordinator هنگام استخراج message از context، channel پیش‌فرض را `instagram_dm` می‌گذارد (`agents/coordinator/nodes.py`). Prestia باید برای Instagram DM از `platform: "instagram"`، برای Telegram از `platform: "telegram"` و برای website chat از `platform: "website"` استفاده کند.
 
-## جهت پیام و فرستنده
+## جهت message و sender
 
-| مقدار پیشنهادی در Prestia | مقدار در Botkonak | alias در Support Agent |
-|-----------------------|----------|---------------------|
+| Prestia (پیشنهادی) | Botkonak | alias Support Agent |
+|--------------------|----------|---------------------|
 | `direction: "inbound"` | `MessageDirection.INBOUND` | — |
 | `direction: "outbound"` | `MessageDirection.OUTBOUND` | — |
 | `sender_type: "customer"` | `SenderType.CUSTOMER` | `sender_role: "customer"` |
 | `sender_type: "staff"` | `SenderType.STAFF` | `sender_role: "staff"` |
 | `sender_type: "system"` | `SenderType.SYSTEM` | `sender_role: "system"` |
 
-Support Agent مقدارهای `body` → `text` و `sent_at` → `created_at` را normalize می‌کند. این منطق در `agents/support/support_context.py` قرار دارد.
+Support Agent مقدار `body` → `text` و `sent_at` → `created_at` normalize می‌کند (`agents/support/support_context.py`).
 
 ## Pagination
 
-**نوع requirement:** برای list endpointها inferred است. در حال حاضر endpointهای internal AI در Botkonak فهرست‌های کامل اما bounded برمی‌گردانند؛ برای مثال همه‌ی productهای active یا ۱۰ thread برتر.
+**نوع نیازمندی:** استنباط‌شده برای list endpointها — endpointهای AI داخلی Botkonak امروز لیست‌های bounded کامل برمی‌گردانند (مثلاً همه productهای active، 10 thread برتر).
 
-Convention پیشنهادی برای Prestia:
+قرارداد پیشنهادی Prestia:
 
 | Parameter | Type | Default | Max |
 |-----------|------|---------|-----|
@@ -83,8 +83,6 @@ Convention پیشنهادی برای Prestia:
 | `cursor` | string | — | جایگزین اختیاری مبتنی بر cursor |
 
 **Response wrapper:**
-
-</div>
 
 <div dir="ltr" align="left">
 
@@ -99,32 +97,36 @@ Convention پیشنهادی برای Prestia:
 
 </div>
 
-<div dir="rtl" align="right">
+برای endpointهای حیاتی AI با پنجره ثابت (messageهای اخیر)، cursor pagination اختیاری است اگر defaultها با limitهای Botkonak هم‌خوان باشند (`thread_limit=10`، `messages_per_thread=5`).
 
-برای endpointهای حساس به AI که window ثابت دارند، مثل پیام‌های اخیر، cursor pagination اختیاری است؛ البته به شرطی که defaultها با limitهای Botkonak هماهنگ باشند، مانند `thread_limit=10` و `messages_per_thread=5`.
+## Filter و sort
 
-## Filtering و Sorting
+query parameterهای رایجی که Botkonak ممکن است نیاز داشته باشد:
 
-query parameterهای مشترکی که Botkonak ممکن است نیاز داشته باشد:
-
-| Parameter | کاربرد برای | هدف |
+| Parameter | Applies to | Purpose |
 |-----------|------------|---------|
-| `is_active=true` | products، categories | Content Agent فقط از productهای active استفاده می‌کند. |
-| `updated_since` | products، orders، inventory، messages | برای incremental sync استفاده می‌شود. |
-| `status` | orders، threads | برای filter کردن open orders یا open threads استفاده می‌شود. |
-| `placed_at_gte`، `placed_at_lt` | orders | برای aggregation فروش در یک بازه‌ی زمانی استفاده می‌شود؛ یا می‌توان از summary endpoint اختصاصی استفاده کرد. |
+| `is_active` | products | Content Agent فقط productهای active |
+| `search` | products، customers | جستجو بر اساس title/slug یا phone/email/name |
+| `category` | products | filter بر اساس category slug |
+| `price_min`، `price_max` | products | filter بازه قیمت |
+| `currency` | products | filter currency |
+| `has_discount` | products | filter discount |
+| `inventory_lte`، `inventory_gte` | products | filter تعداد variant |
+| `status` | orders | filter وضعیت order |
+| `created_at_from`، `created_at_to` | orders | بازه تاریخ order |
+| `customer_id` | orders | filter بر اساس customer |
+| `product_slug` | orders | orderهای حاوی product |
+| `total_min`، `total_max` | orders | بازه total order |
+| `platform` | customers | filter منبع message |
 
 sort پیش‌فرض:
+- Products: `title` صعودی
+- Orders: `-created_at`
+- Customers: `-updated_at`
 
-- Products: مرتب‌سازی صعودی بر اساس `name`، مطابق با `build_product_summary`
-- Orders: مرتب‌سازی بر اساس `-placed_at`
-- Threads: مرتب‌سازی بر اساس `-last_message_at`
+## شکل error response
 
-## شکل response خطا
-
-این ساختار باید با style مربوط به Django REST Framework که در Botkonak استفاده شده هماهنگ باشد:
-
-</div>
+هم‌راستا با سبک Django REST Framework در Botkonak:
 
 <div dir="ltr" align="left">
 
@@ -136,28 +138,24 @@ sort پیش‌فرض:
 
 </div>
 
-<div dir="rtl" align="right">
-
-| HTTP status | زمان استفاده |
+| HTTP status | When |
 |-------------|------|
-| `400` | query parameterها نامعتبر هستند. |
-| `401` | Bearer token وجود ندارد یا نامعتبر است. |
-| `403` | token معتبر است، اما scope کافی ندارد یا مربوط به Store اشتباه است. |
-| `404` | resource پیدا نشد. |
-| `429` | rate limit رد شده است. |
-| `500` | server error رخ داده است. |
+| `400` | query parameter نامعتبر |
+| `401` | Bearer token گم‌شده یا نامعتبر |
+| `403` | token معتبر اما scope ناکافی یا store اشتباه |
+| `404` | resource پیدا نشد |
+| `429` | rate limit رد شد |
+| `500` | خطای server |
 
-`DjangoClient` در Botkonak، خطاهای transient با statusهای `502`، `503` و `504` را برای requestهای GET دوباره retry می‌کند. این رفتار در `agents/shared/django_client/client.py` قرار دارد. Prestia نباید از این statusها برای auth failure استفاده کند.
+`DjangoClient` در Botkonak برای GET روی `502`، `503`، `504` موقت retry می‌کند (`agents/shared/django_client/client.py`). Prestia نباید این کدها را برای خطای auth استفاده کند.
 
-## الگوی Warningها در responseهای aggregated
+## الگوی warnings (responseهای aggregate)
 
-context bundle در Botkonak برای partial failureها شامل `warnings: []` است. این ساختار در `backend/catalog/context.py` تعریف شده است. اگر Prestia یک aggregated context endpoint ارائه کند، می‌تواند از همین الگو استفاده کند.
+context bundle Botkonak شامل `warnings: []` برای خطاهای جزئی است (`backend/catalog/context.py`). اگر Prestia endpoint context aggregate ارائه دهد، می‌تواند همان الگو را استفاده کند.
 
-## شکل تنظیمات Brand Voice
+## شکل brand voice settings
 
-Content Agent مقدار `store_context.settings.brand_voice` را از `agents/content/brand_voice.py` می‌خواند:
-
-</div>
+Content Agent مقدار `store_context.settings.brand_voice` را از **Botkonak tenant settings** می‌خواند (`agents/content/brand_voice.py`):
 
 <div dir="ltr" align="left">
 
@@ -174,23 +172,21 @@ Content Agent مقدار `store_context.settings.brand_voice` را از `agents/
 
 </div>
 
-<div dir="rtl" align="right">
-
-store profile در Prestia باید تنظیمات معادل را expose کند. برای جزئیات بیشتر به [02-store-profile-apis.md](./02-store-profile-apis.md) مراجعه شود.
+در UI تنظیمات tenant/store Botkonak پیکربندی می‌شود — از Prestia fetch نمی‌شود (به [02-store-profile-apis.md](./02-store-profile-apis.md) مراجعه کنید).
 
 ## شواهد از codebase
 
 - `backend/catalog/models.py` — enumها و نام fieldها
 - `backend/catalog/context.py` — کلیدهای سطح بالای context bundle
-- `backend/catalog/pii.py` — قوانین PII redaction
-- `agents/content/product_context.py` — aliasهای fieldها مانند `name`/`title` و `image`/`image_url`
-- `agents/support/support_context.py` — aliasهای مربوط به message/thread fieldها
-- `docs/phases/step-3.5.md` — نمونه‌ی JSON برای context bundle
+- `backend/catalog/pii.py` — قوانین redaction PII
+- `agents/content/product_context.py` — aliasهای field (`name`/`title`، `image`/`image_url`)
+- `agents/support/support_context.py` — aliasهای field message/thread
+- `docs/phases/step-3.5.md` — نمونه JSON context bundle
 
 ## سؤال‌های باز
 
-1. آیا Prestia از UUID استفاده می‌کند یا integer ID؟ Botkonak به‌صورت local از UUID استفاده می‌کند و connector باید mapping را انجام دهد.
-2. rate limitهای استاندارد برای sync callها در مقایسه با interactive callها چیست؟
-3. آیا Prestia قیمت‌ها را با رقم فارسی برمی‌گرداند؟ اگر بله، آیا قبل از import در Django به normalization نیاز داریم؟
+1. Prestia از UUID یا integer ID استفاده می‌کند (Botkonak محلی UUID دارد؛ connector باید map کند).
+2. rate limit استاندارد برای sync در مقابل call تعاملی.
+3. آیا Prestia ارقام فارسی در قیمت برمی‌گرداند و آیا قبل از import به Django normalize لازم است.
 
 </div>

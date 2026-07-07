@@ -2,122 +2,124 @@
 
 # APIهای Sales Agent
 
-APIهایی که **Sales Agent** برای تحلیل performance فروش، inventory alertها و recommendationها به آن‌ها نیاز دارد.
+APIهای موردنیاز **Sales Agent** برای تحلیل عملکرد sales، هشدار inventory و recommendationها.
 
 ## خلاصه Agent
 
-Sales Agent، یعنی `agents/sales/`، خروجی‌ای از نوع `SalesAnalysisResult` تولید می‌کند که شامل recommendationهای زیر است:
+Sales Agent (`agents/sales/`) `SalesAnalysisResult` با recommendationهای زیر تولید می‌کند:
 
-- `sales.restock` — موجودی کم / تقاضای بالا
-- `sales.discount` — گزینه‌های مناسب برای discount
+- `sales.restock` — stock کم / تقاضای بالا
+- `sales.discount` — کاندیدهای discount
 - `sales.follow_up` — فرصت‌های follow-up
 
-rubric مربوط به priority از 1، یعنی urgent، تا 5، یعنی informational، تعریف شده است؛ فایل `agents/sales/prompts.py`. Coordinator مقدارهای `sales_summary` و `inventory` را از context bundle به Sales Agent ارسال می‌کند و مقدار `fetch_from_django: False` را تنظیم می‌کند؛ فایل `agents/coordinator/nodes.py`.
+rubric اولویت 1 (فوری) تا 5 (اطلاعاتی) (`agents/sales/prompts.py`). Coordinator `sales_summary` و `inventory` را از context bundle با `fetch_from_django: False` می‌فرستد (`agents/coordinator/nodes.py`).
+
+**خلاصه sales، پرفروش‌ها، insightهای low-stock، کاندیدهای discount و recommendationها داخل Botkonak** از داده خام order و product Prestia محاسبه می‌شوند — Prestia API خلاصه sales expose نمی‌کند.
 
 ## جریان داده
 
-</div>
+<div dir="ltr" align="left">
 
-```text
-Prestia GET /sales/summary + GET /inventory/low-stock
+```
+GET /v1/orders + GET /v1/products (on demand)
        ↓
-Botkonak sync / connector
+Botkonak aggregates sales summary + inventory signals locally
        ↓
 Context bundle → Sales Agent POST /run
 ```
 
-<div dir="rtl" align="right">
+</div>
 
-مسیر direct اختیاری هم وجود دارد؛ پیاده‌سازی شده اما توسط Coordinator غیرفعال است: وقتی مقدار `fetch_from_django=True` باشد، Sales Agent endpointهای داخلی Django را فراخوانی می‌کند؛ فایل `agents/sales/django_fetch.py`.
+timezone و currency برای مرزهای دوره از **Botkonak tenant settings** می‌آیند، نه Prestia ([02-store-profile-apis.md](./02-store-profile-apis.md)).
 
-## APIهای لازم از Prestia
+## APIهای Prestia موردنیاز
 
-| Prestia API                                                       | ورودی Sales Agent                                            | Priority         |
-| ----------------------------------------------------------------- | ------------------------------------------------------------ | ---------------- |
-| [GET /v1/sales/summary](./04-order-and-sales-apis.md)             | مقدارهای `sales_summary.today` و `sales_summary.last_7_days` | P0               |
-| [GET /v1/inventory/low-stock](./03-product-and-inventory-apis.md) | مقدار `inventory.items`                                      | P0               |
-| [GET /v1/products](./03-product-and-inventory-apis.md)            | نام productها و SKUها برای cross-reference                   | P0، از طریق sync |
-| [GET /v1/store](./02-store-profile-apis.md)                       | مقدارهای `currency` و `timezone` برای period boundaryها      | P0               |
+| Prestia API | ورودی Sales Agent | Priority |
+|-------------|-------------------|----------|
+| [GET /v1/orders](./04-order-and-sales-apis.md) | orderهای خام برای sales aggregation | P0 |
+| [GET /v1/products](./03-product-and-inventory-apis.md) | عنوان product، `inventories[]` برای سیگنال stock | P0 |
 
-## فیلدهای Sales summary که استفاده می‌شوند
+## Sales summary (محاسبه‌شده توسط Botkonak)
 
-بر اساس فایل‌های `agents/sales/empty_sales.py` و `agents/sales/inventory_signals.py`:
+Botkonak `sales_summary.today` و `sales_summary.last_7_days` را از `GET /v1/orders` با timezone فروشگاه از tenant settings می‌سازد (`backend/catalog/services.py`).
 
-| Period field          | Usage                                                             |
-| --------------------- | ----------------------------------------------------------------- |
-| `total_revenue`       | تشخیص empty sales                                                 |
-| `order_count`         | تشخیص empty sales                                                 |
-| `units_sold`          | demand signalها                                                   |
-| `average_order_value` | insightها                                                         |
-| `top_products[]`      | best sellerها؛ cross-reference با inventory برای restock/discount |
+| Period field | Source |
+|--------------|--------|
+| `total_revenue` | مجموع `total` orderهای revenue-countable |
+| `order_count` | تعداد orderهای revenue-countable |
+| `units_sold` | مجموع `items[].quantity` |
+| `average_order_value` | `total_revenue / order_count` |
+| `top_products[]` | گروه‌بندی بر اساس `items[].product_slug` |
 
-هر item داخل `top_products`:
+هر آیتم `top_products` (محاسبه local):
 
-| Field           | Usage                               |
-| --------------- | ----------------------------------- |
-| `product_id`    | مقدار داخل recommendation `payload` |
-| `sku`           | مقدار داخل recommendation `payload` |
-| `name`          | عنوان‌ها و descriptionها            |
-| `quantity_sold` | velocity                            |
-| `revenue`       | prioritization                      |
-| `category`      | context                             |
+| Field | Source |
+|-------|--------|
+| `product_slug` | line item order |
+| `name` | `items[].product_name` |
+| `quantity_sold` | quantity aggregate‌شده |
+| `revenue` | `line_total` aggregate‌شده |
+| `category` | از product متناظر در `/v1/products` |
 
-## فیلدهای Inventory که استفاده می‌شوند
+## fieldهای inventory استفاده‌شده
 
-بر اساس `build_low_stock_summary` و فایل `agents/sales/inventory_signals.py`:
+از `inventories[]` product در [GET /v1/products](./03-product-and-inventory-apis.md):
 
-| Field                               | Usage                               |
-| ----------------------------------- | ----------------------------------- |
-| `product_id`, `sku`, `product_name` | restock recommendationها            |
-| `available_quantity`                | ریسک stockout                       |
-| `low_stock_threshold`               | مرز alert                           |
-| `shortage_units`                    | اندازه‌گیری urgency                 |
-| `suggested_reorder_quantity`        | مقدار `payload.suggested_order_qty` |
-| `category`                          | grouping در LLM payload             |
+| Field | Usage |
+|-------|-------|
+| `slug`، `title` | recommendationهای restock |
+| `inventories[].num` | ریسک stockout |
+| `inventories[].metadata` | context variant |
+| `category.title` | گروه‌بندی در payload LLM |
 
-## انواع Signalهایی که به‌صورت داخلی ساخته می‌شوند
+## نوع سیگنال‌های ساخته‌شده داخلی
 
-| Signal                       | Source                                         | Prestia API                |
-| ---------------------------- | ---------------------------------------------- | -------------------------- |
-| Productهای low stock         | `inventory.items`                              | `GET /inventory/low-stock` |
-| فروشنده‌های قوی با موجودی کم | cross-reference بین `top_products` و inventory | Summary + low-stock        |
-| Slow movers                  | LLM از روی `top_products` / sales ضعیف         | Summary؛ API اختصاصی ندارد |
-| Discount candidates          | LLM از روی sales trendها + inventory           | Summary؛ API اختصاصی ندارد |
+| Signal | Source | Prestia API |
+|--------|--------|-------------|
+| productهای low stock | `inventories[].num` زیر آستانه | `GET /v1/products` |
+| پرفروش با stock کم | cross-reference پرفروش + inventories | Orders + products |
+| slow moverها | LLM از پرفروش ضعیف | Orders (محاسبه‌شده) |
+| کاندیدهای discount | LLM از روند sales + inventory | Orders + products |
 
-## رفتار در صورت Empty بودن Sales
+## رفتار sales خالی
 
-اگر هم `today` و هم `last_7_days` revenue صفر و order صفر داشته باشند، Agent فراخوانی LLM را skip می‌کند؛ فایل `agents/sales/empty_sales.py`. Prestia باید مقدارهای عددی صفر را برگرداند و periodها را حذف نکند.
+اگر هم `today` و هم `last_7_days` revenue و order صفر داشته باشند، agent از LLM رد می‌شود (`agents/sales/empty_sales.py`). aggregation Botkonak باید صفر عددی برگرداند، نه حذف دوره‌ها.
 
-## APIهای اختیاری از Prestia
+## APIهای اختیاری Prestia
 
-| API                                         | Why                                                                        | Priority |
-| ------------------------------------------- | -------------------------------------------------------------------------- | -------- |
-| `GET /v1/orders`                            | محاسبه دوباره summary به‌صورت local؛ reconciliation بین Prestia و Botkonak | P1       |
-| `GET /v1/inventory`                         | سطح کامل stock فراتر از low-stock                                          | P1       |
-| Abandoned cart / orderهای با `status=draft` | فقط برای mock UI مربوط به follow-up                                        | Future   |
+| API | Why | Priority |
+|-----|-----|----------|
+| [GET /v1/customer/{id}/orders](./05-customer-apis.md) | order history customer برای follow-up | P1 |
+| abandoned cart / orderهای `status=draft` | فقط follow-up UI mock | Future |
 
-## Write APIها، لازم نیستند
+## APIهایی که لازم نیست
 
-Sales Agent وقتی فعال باشد می‌تواند actionها را در Django با `POST /internal/ai/actions/` persist کند. **هیچ write به Prestia** برای discount یا restock وجود ندارد.
+| API | Reason |
+|-----|--------|
+| `GET /v1/sales/summary` | توسط Botkonak از orders محاسبه می‌شود |
+| `GET /v1/store` | timezone/currency در Botkonak tenant settings |
+| `GET /v1/inventory/low-stock` | داده stock در `inventories[]` product |
 
-فایل `agents/sales/action_mapping.py` فقط به actionهای داخلی map می‌کند.
+## Write APIها (لازم نیست)
+
+Sales agent می‌تواند وقتی فعال باشد `persist_actions` را به Django `POST /internal/ai/actions/` بفرستد. **هیچ write Prestia** برای discount یا restock وجود ندارد.
 
 ## شواهد از codebase
 
-| File                                | Relevance                                               |
-| ----------------------------------- | ------------------------------------------------------- |
-| `agents/sales/analysis.py`          | pipeline اصلی                                           |
-| `agents/sales/django_fetch.py`      | الگوی fetch از Django؛ قابل نگاشت به معادل‌های Prestia  |
-| `agents/sales/inventory_signals.py` | ساخت signalها                                           |
-| `agents/sales/empty_sales.py`       | مدیریت empty sales                                      |
-| `agents/sales/prompts.py`           | rubric مربوط به priority                                |
-| `backend/catalog/services.py`       | منطق aggregation که Prestia باید مشابه آن را mirror کند |
-| `docs/agents/sales.md`              | مستندات Agent                                           |
-| `docs/examples/sales_output.json`   | output contract                                         |
+| File | Relevance |
+|------|-----------|
+| `agents/sales/analysis.py` | pipeline اصلی |
+| `agents/sales/django_fetch.py` | الگوی fetch Django (معادل Prestia) |
+| `agents/sales/inventory_signals.py` | ساخت سیگنال |
+| `agents/sales/empty_sales.py` | مدیریت sales خالی |
+| `agents/sales/prompts.py` | rubric اولویت |
+| `backend/catalog/services.py` | منطق aggregation |
+| `docs/agents/sales.md` | مستندات agent |
 
 ## سؤال‌های باز
 
-1. آیا Prestia می‌تواند productهای «discount-eligible» را به‌صورت native مشخص کند یا این مورد باید از طریق LLM inference انجام شود؟
-2. دقت real-time مربوط به inventory reservation در دوره‌های high-traffic چقدر است؟
+1. آیا Prestia می‌تواند productهای «واجد شرایط discount» را به‌صورت native flag کند در مقابل استنتاج LLM.
+2. دقت inventory بلادرنگ در دوره‌های ترافیک بالا.
+3. آستانه low-stock — تنظیم tenant Botkonak در مقابل metadata Prestia.
 
 </div>

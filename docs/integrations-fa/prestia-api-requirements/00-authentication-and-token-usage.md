@@ -2,19 +2,19 @@
 
 # احراز هویت و استفاده از Token
 
-این سند توضیح می‌دهد که Botkonak هنگام فراخوانی APIهای Prestia باید چگونه احراز هویت کند.
+نحوه احراز هویت Botkonak هنگام فراخوانی APIهای Prestia.
 
 ## نمای کلی
 
-Botkonak با استفاده از **OAuth 2.0** به Prestia متصل می‌شود. بعد از انجام authorization، Botkonak APIهای REST مربوط به Prestia را با یک **Bearer access token** در header به نام `Authorization` فراخوانی می‌کند. این الگو با روشی که agentهای Botkonak در حال حاضر برای فراخوانی APIهای داخلی Django استفاده می‌کنند هم‌راستا است؛ یعنی همان فایل `agents/shared/django_client/client.py`.
+Botkonak با **OAuth 2.0** به Prestia متصل می‌شود. پس از authorization، Botkonak APIهای REST Prestia را با **Bearer access token** در header `Authorization` فراخوانی می‌کند. این الگو با فراخوانی APIهای داخلی Django توسط agentهای Botkonak هم‌راستاست (`agents/shared/django_client/client.py`).
 
-**نوع نیازمندی:** استنباط‌شده — در حال حاضر هیچ کد OAuth یا connector مربوط به Prestia در repository وجود ندارد. این الگو برای هدف integration اعلام‌شده لازم است و با استفاده فعلی از `Authorization: Bearer` هماهنگ است.
+**نوع نیازمندی:** استنباط‌شده — هیچ کد OAuth یا connector مربوط به Prestia در repository وجود ندارد. این الگو برای هدف integration لازم است و با استفاده فعلی از `Authorization: Bearer` هماهنگ است.
 
 ## Headerهای لازم برای request
 
-هر request از Botkonak به APIهای Prestia **باید** شامل headerهای زیر باشد:
+هر request از Botkonak به APIهای Prestia **باید** شامل موارد زیر باشد:
 
-</div>
+<div dir="ltr" align="left">
 
 ```http
 Authorization: Bearer <access_token>
@@ -22,121 +22,120 @@ Accept: application/json
 Content-Type: application/json
 ```
 
-<div dir="rtl" align="right">
-
-Header اختیاری برای correlation، که Botkonak همین حالا هم آن را برای Django ارسال می‌کند:
-
 </div>
+
+Header اختیاری correlation (Botkonak همین حالا هم برای Django ارسال می‌کند):
+
+<div dir="ltr" align="left">
 
 ```http
 X-Request-ID: <uuid-or-trace-id>
 ```
 
-<div dir="rtl" align="right">
+</div>
 
 ## شناسایی Tenant
 
-در یک integration درست مبتنی بر OAuth 2.0:
+در integration صحیح OAuth 2.0:
 
-- **access token نماینده فروشگاه/tenant مجازشده در Prestia است**.
-- Prestia باید **tenant و store scope را سمت server** و از روی token تشخیص دهد.
-- Botkonak **نباید** برای authentication، شناسه store یا secret مربوط به tenant را در query parameterها ارسال کند.
-- پارامترهای مسیر مثل `/products` باید برای همان فروشگاهی اعمال شوند که از token برداشت می‌شود؛ مگر اینکه Prestia به‌صورت رسمی multi-store tokenها را مستند کرده باشد.
+- **access token نماینده فروشگاه/tenant مجاز Prestia** است.
+- Prestia **tenant و store scope را server-side از روی token** resolve می‌کند.
+- Botkonak **نباید** store ID یا tenant secret را در query parameter برای authentication ارسال کند.
+- path parameterهایی مثل `/products` به فروشگاهی که token نشان می‌دهد اعمال می‌شوند، مگر Prestia multi-store token را مستند کرده باشد.
 
-این مدل مشابه مدل داخلی Botkonak است: در Django، کلاس `InternalAIAuthentication` مقدارهای `tenant_id` و `store_id` را از service JWT استخراج می‌کند، نه از fieldهای موجود در request body. این موضوع در فایل `backend/catalog/internal_views.py` دیده می‌شود.
+این با model داخلی Botkonak هم‌خوان است: Django `InternalAIAuthentication` مقدار `tenant_id` و `store_id` را از service JWT می‌گیرد، نه از fieldهای request body (`backend/catalog/internal_views.py`).
 
 ## مفاهیم OAuth
 
 ### Access token
 
-- credential کوتاه‌مدتی است که در هر فراخوانی APIهای Prestia استفاده می‌شود.
-- فقط باید در header به نام `Authorization` و با Bearer scheme ارسال شود.
-- نباید در URL، query string یا logهایی که در browser قابل مشاهده‌اند ظاهر شود.
+- credential کوتاه‌عمر برای هر API call به Prestia.
+- فقط در header `Authorization` با scheme Bearer ارسال می‌شود.
+- نباید در URL، query string یا logهای قابل‌مشاهده browser ظاهر شود.
 
 ### Refresh token
 
-- برای اتصال‌های بلندمدت Botkonak، بدون نیاز به گرفتن consent تکراری از manager، **پیشنهاد می‌شود (P1)**.
-- Botkonak آن را در token endpoint مربوط به Prestia با یک access token جدید exchange می‌کند.
-- در کد فعلی Botkonak به آن اشاره‌ای نشده است، چون service JWTها برای هر report run جداگانه mint می‌شوند.
+- **پیشنهاد می‌شود (P1)** برای اتصال بلندمدت Botkonak بدون consent مکرر manager.
+- Botkonak آن را در token endpoint Prestia با access token جدید عوض می‌کند.
+- در کد فعلی Botkonak ارجاعی ندارد (service JWTها per report run صادر می‌شوند).
 
-### انقضای Token
+### انقضای token
 
-- Prestia باید هنگام صدور token مقدار `expires_in` را بر حسب ثانیه برگرداند.
-- Botkonak باید قبل از انقضا token را refresh کند یا authorization را دوباره انجام دهد.
-- اگر token منقضی شده باشد، Prestia باید پاسخ `401 Unauthorized` را همراه با یک error body قابل‌خواندن توسط ماشین برگرداند.
+- Prestia باید `expires_in` (ثانیه) هنگام صدور token برگرداند.
+- Botkonak باید قبل از انقضا refresh یا re-authorize کند.
+- token منقضی → Prestia `401 Unauthorized` با error body قابل‌خواندن برای ماشین برمی‌گرداند.
 
-### Scopeهای Token
+### Token scopeها
 
-Scopeها باید از روی read APIهایی استخراج شوند که Botkonak واقعاً به آن‌ها نیاز دارد. فهرست پیشنهادی scopeها:
+scopeها باید **از read APIهایی که Botkonak واقعاً نیاز دارد** استخراج شوند. لیست پیشنهادی:
 
-| Scope                   | نگاشت به گروه API در Prestia | موردنیاز در codebase                                                   |
-| ----------------------- | ---------------------------- | ---------------------------------------------------------------------- |
-| `read:store`            | Store profile                | بله — context bundle شامل `store` و `tenant`                           |
-| `read:products`         | Products و categories        | بله — content agent و context bundle                                   |
-| `read:inventory`        | Inventory و low-stock        | بله — sales agent                                                      |
-| `read:orders`           | Orders و sales summary       | بله — sales aggregation                                                |
-| `read:customers`        | Customer list                | محدود — فقط برای sync؛ AI APIها از `customer_ref` مبهم استفاده می‌کنند |
-| `read:support_messages` | Recent message threads       | بله — support agent                                                    |
-| `read:analytics`        | Pre-aggregated sales summary | بله — اگر sales summary یک endpoint اختصاصی باشد                       |
-| `write:support_replies` | Post support replies         | **لازم نیست** — در کد فعلی هیچ write outbound به Prestia وجود ندارد    |
-| `write:content_drafts`  | Publish content              | **لازم نیست** — draftها داخل Botkonak باقی می‌مانند                    |
-| `write:recommendations` | Apply discounts/restock      | **لازم نیست** — actionها در حد approval stub هستند                     |
+| Scope | نگاشت به گروه API Prestia | موردنیاز در codebase |
+|-------|---------------------------|----------------------|
+| `read:products` | Products، categories | بله — Content Agent، Sales Agent، context bundle |
+| `read:orders` | Orders | بله — sales aggregation (محاسبه local) |
+| `read:customers` | Customer list | بله — Support CRM sync |
+| `read:faqs` | FAQ list | بله — Support Agent |
+| `write:support_replies` | ارسال support reply | **لازم نیست** — write به Prestia در کد وجود ندارد |
+| `write:content_drafts` | انتشار content | **لازم نیست** — draftها در Botkonak می‌مانند |
+| `write:recommendations` | اعمال discount/restock | **لازم نیست** — actionها approval stub هستند |
 
-### لغو Token یا Token revocation
+**لازم نیست:** `read:store` (Botkonak tenant settings)، `read:analytics` (بدون sales summary Prestia)، `read:inventory` (inventory روی products)، `read:support_messages` (webhook ingestion).
 
-- Prestia باید از revocation پشتیبانی کند تا وقتی manager اتصال Botkonak را قطع می‌کند، tokenها باطل شوند.
-- بعد از revocation، همه access tokenها و refresh tokenهای قبلاً صادرشده باید رد شوند و پاسخ `401` برگردد.
+### لغو token
 
-### Prestia چگونه باید Tokenها را validate کند؟
+- Prestia باید هنگام disconnect کردن Botkonak توسط manager، revocation را پشتیبانی کند.
+- پس از revocation، access و refresh tokenهای قبلی باید رد شوند (`401`).
 
-1. در هر request، signature مربوط به JWT را verify کند یا در صورت استفاده از opaque token، token را lookup کند.
-2. وضعیت expiration و revocation را بررسی کند.
-3. Scopeها را برای هر endpoint enforce کند.
-4. برای use case مربوط به Botkonak، token را دقیقاً به یک store و tenant bind کند.
-5. وقتی token معتبر است اما scope لازم را ندارد، پاسخ `403 Forbidden` برگرداند.
+### نحوه اعتبارسنجی token توسط Prestia
 
-### چرا Botkonak نباید Tokenها را در query parameter ارسال کند؟
+1. تأیید signature (JWT) یا lookup (opaque token) در هر request.
+2. بررسی expiration و وضعیت revocation.
+3. اعمال scope per endpoint.
+4. bind کردن token به دقیقاً یک store (و tenant) برای use case Botkonak.
+5. برگرداندن `403 Forbidden` وقتی token معتبر است اما scope کافی ندارد.
 
-- Query stringها در proxy logها، browser history و referrer headerها ظاهر می‌شوند.
-- استاندارد OAuth 2.0 Bearer Token Usage یعنی RFC 6750 استفاده از header به نام `Authorization` را مشخص می‌کند.
-- `DjangoClient` در Botkonak همین حالا هم فقط از auth مبتنی بر header استفاده می‌کند؛ یعنی فایل `agents/shared/django_client/client.py`.
+### چرا Botkonak نباید token را در query parameter ارسال کند
 
-### چرا HTTPS لازم است؟
+- query string در logهای proxy، history browser و referrer header ظاهر می‌شود.
+- OAuth 2.0 Bearer Token Usage (RFC 6750) header `Authorization` را مشخص می‌کند.
+- `DjangoClient` در Botkonak فقط از auth مبتنی بر header استفاده می‌کند (`agents/shared/django_client/client.py`).
 
-- Bearer tokenها برای دسترسی API عملاً معادل password هستند.
-- همه endpointهای OAuth و API در Prestia باید از TLS و آدرس‌های `https://` استفاده کنند.
+### چرا HTTPS لازم است
 
-## Endpointهای OAuth که Prestia باید expose کند
+- Bearer token معادل password برای دسترسی API است.
+- همه endpointهای OAuth و API Prestia باید TLS (`https://`) داشته باشند.
+
+## endpointهای OAuth (Prestia باید expose کند)
 
 ### 1. Authorization endpoint
 
-| Property                   | Value                                                     |
-| -------------------------- | --------------------------------------------------------- |
-| **نام API**                | OAuth 2.0 Authorization                                   |
-| **HTTP method**            | `GET`، از طریق browser redirect                           |
-| **مسیر پیشنهادی**          | `https://prestia.ir/oauth/authorize`                      |
-| **مصرف‌کننده در Botkonak** | Admin onboarding / Background sync برای token acquisition |
-| **نوع نیازمندی**           | استنباط‌شده                                               |
-| **Priority**               | P0                                                        |
+| Property | Value |
+|----------|-------|
+| **API name** | OAuth 2.0 Authorization |
+| **HTTP method** | `GET` (browser redirect) |
+| **Suggested path** | `https://prestia.ir/oauth/authorize` |
+| **Botkonak consumer** | Admin onboarding / Background sync (token acquisition) |
+| **Requirement type** | Inferred |
+| **Priority** | P0 |
 
 **Query parameterها:** `client_id`، `redirect_uri`، `response_type=code`، `scope`، `state`
 
-**نتیجه موفق:** redirect به Botkonak همراه با `code` و `state`.
+**نتیجه موفق:** redirect به Botkonak با `code` و `state`.
 
 ### 2. Token endpoint
 
-| Property                   | Value                                                         |
-| -------------------------- | ------------------------------------------------------------- |
-| **نام API**                | OAuth 2.0 Token Exchange                                      |
-| **HTTP method**            | `POST`                                                        |
-| **مسیر پیشنهادی**          | `https://api.prestia.ir/v1/oauth/token`                       |
-| **مصرف‌کننده در Botkonak** | Background sync و Coordinator از طریق credentialهای ذخیره‌شده |
-| **نوع نیازمندی**           | استنباط‌شده                                                   |
-| **Priority**               | P0                                                            |
+| Property | Value |
+|----------|-------|
+| **API name** | OAuth 2.0 Token Exchange |
+| **HTTP method** | `POST` |
+| **Suggested path** | `https://api.prestia.ir/v1/oauth/token` |
+| **Botkonak consumer** | Background sync، Coordinator (از طریق credential ذخیره‌شده) |
+| **Requirement type** | Inferred |
+| **Priority** | P0 |
 
-**Request body برای authorization code grant:**
+**Request body (authorization code grant):**
 
-</div>
+<div dir="ltr" align="left">
 
 ```json
 {
@@ -148,11 +147,11 @@ Scopeها باید از روی read APIهایی استخراج شوند که Bot
 }
 ```
 
-<div dir="rtl" align="right">
-
-**Request body برای refresh grant:**
-
 </div>
+
+**Request body (refresh grant):**
+
+<div dir="ltr" align="left">
 
 ```json
 {
@@ -163,11 +162,11 @@ Scopeها باید از روی read APIهایی استخراج شوند که Bot
 }
 ```
 
-<div dir="rtl" align="right">
-
-**Response موفق:**
-
 </div>
+
+**Successful response:**
+
+<div dir="ltr" align="left">
 
 ```json
 {
@@ -175,28 +174,28 @@ Scopeها باید از روی read APIهایی استخراج شوند که Bot
   "token_type": "Bearer",
   "expires_in": 3600,
   "refresh_token": "prestia_rt_xyz789",
-  "scope": "read:store read:products read:inventory read:orders read:support_messages read:analytics"
+  "scope": "read:products read:orders read:customers read:faqs"
 }
 ```
 
-<div dir="rtl" align="right">
+</div>
 
-**Error caseها:** `400` برای `invalid_grant`، و `401` برای `invalid_client`
+**Error caseها:** `400` invalid_grant، `401` invalid_client
 
 ### 3. Token revocation endpoint
 
-| Property                   | Value                                      |
-| -------------------------- | ------------------------------------------ |
-| **نام API**                | OAuth 2.0 Token Revocation                 |
-| **HTTP method**            | `POST`                                     |
-| **مسیر پیشنهادی**          | `https://api.prestia.ir/v1/oauth/revoke`   |
-| **مصرف‌کننده در Botkonak** | Admin Dashboard برای disconnect کردن store |
-| **نوع نیازمندی**           | استنباط‌شده                                |
-| **Priority**               | P1                                         |
+| Property | Value |
+|----------|-------|
+| **API name** | OAuth 2.0 Token Revocation |
+| **HTTP method** | `POST` |
+| **Suggested path** | `https://api.prestia.ir/v1/oauth/revoke` |
+| **Botkonak consumer** | Admin Dashboard (disconnect store) |
+| **Requirement type** | Inferred |
+| **Priority** | P1 |
 
-## نمونه request احرازهویت‌شده به API
+## نمونه request احراز هویت‌شده
 
-</div>
+<div dir="ltr" align="left">
 
 ```http
 GET /v1/products?is_active=true&limit=100 HTTP/1.1
@@ -206,25 +205,25 @@ Accept: application/json
 X-Request-ID: 7c9e6679-7425-40de-944b-e07fc1f90ae7
 ```
 
-<div dir="rtl" align="right">
+</div>
 
 ## نکات امنیتی
 
-- مقدارهای `client_secret`، access tokenها و refresh tokenها را فقط در backend مربوط به Botkonak ذخیره کنید؛ هرگز آن‌ها را داخل bundleهای client مربوط به Next.js قرار ندهید.
-- در صورت تغییر scopeها یا انتقال مالکیت store، tokenها را rotate کنید.
-- برای debug بین سرویس‌ها، مقدار `X-Request-ID` را log کنید؛ اما هرگز token کامل را log نکنید. Coordinator در Botkonak همین حالا هم از log کردن JWTها پرهیز می‌کند؛ این موضوع در `docs/agents/coordinator.md` آمده است.
+- `client_secret`، access token و refresh token فقط در backend Botkonak ذخیره شوند؛ هرگز در bundleهای Next.js client.
+- tokenها هنگام تغییر scope یا انتقال مالکیت store rotate شوند.
+- `X-Request-ID` برای debug بین سرویس‌ها log شود؛ هرگز token کامل log نشود (Coordinator همین حالا از log کردن JWT خودداری می‌کند — `docs/agents/coordinator.md`).
 
 ## شواهد از codebase
 
-- `agents/shared/django_client/client.py` — تابع `_build_headers()` مقدارهای `Authorization: Bearer`، `Accept` و `Content-Type` را تنظیم می‌کند.
-- `backend/accounts/authentication.py` و `backend/accounts/service_jwt.py` — الگوی JWT داخلی برای AI serviceها.
-- `docs/phases/step-2.2.md` — طراحی internal AI auth.
-- `backend/catalog/internal_views.py` — store scope از هویت token گرفته می‌شود، نه فقط از URL.
+- `agents/shared/django_client/client.py` — `_build_headers()` مقدار `Authorization: Bearer`، `Accept`، `Content-Type` را تنظیم می‌کند
+- `backend/accounts/authentication.py`، `backend/accounts/service_jwt.py` — الگوی internal JWT برای AI serviceها
+- `docs/phases/step-2.2.md` — طراحی internal AI auth
+- `backend/catalog/internal_views.py` — store scope از identity token، نه فقط URL
 
 ## سؤال‌های باز
 
-1. Prestia دقیقاً از کدام OAuth flow پشتیبانی می‌کند: authorization code یا client credentials برای server-to-server؟
-2. آیا Prestia access token را به شکل JWT صادر می‌کند یا opaque access token؟
-3. آیا یک Prestia account می‌تواند چند store را authorize کند؟ چون در Botkonak، هر `Store` در scope یک tenant تعریف می‌شود.
+1. OAuth flow دقیق Prestia (authorization code در مقابل client credentials برای server-to-server).
+2. Prestia JWT یا opaque access token صادر می‌کند.
+3. آیا یک حساب Prestia می‌تواند چند store را authorize کند (Botkonak `Store` per-tenant scoped است).
 
 </div>

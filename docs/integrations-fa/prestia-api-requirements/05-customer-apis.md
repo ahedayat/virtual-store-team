@@ -2,56 +2,61 @@
 
 # APIهای Customer
 
-APIهایی برای customer information، order history و segmentation.
+APIها برای اطلاعات customer و order history.
 
 ## ارزیابی نیاز فعلی Botkonak
 
-Customer data در Botkonak وجود دارد؛ فایل `backend/catalog/models.py` و مدل `Customer`. همچنین برای demoهای support مربوط به Prestia، داده customer به‌صورت seed اضافه شده است. با این حال:
+داده customer در Botkonak وجود دارد (`backend/catalog/models.py` — `Customer`) و برای demoهای support Prestia seed شده است. Support Agent یک **CRM سطح tenant** در Botkonak نگه می‌دارد که customerها را از website، Instagram، Telegram و کانال‌های آینده یکپارچه می‌کند.
 
-- **APIهایی که در مسیر AI استفاده می‌شوند، هرگز raw PII را expose نمی‌کنند** — messageها از `customer_ref` مبهم استفاده می‌کنند؛ فایل `catalog/pii.py`.
-- **Sales Agent** به‌صورت صریح از قرار دادن customer PII در promptها پرهیز می‌کند؛ فایل `agents/sales/prompts.py`.
-- **Frontend** فقط از mock customerها استفاده می‌کند؛ فایل `frontend/hooks/use-customers.ts`.
-- **هیچ کد customer analytics یا segmentation** وجود ندارد.
-
-بنابراین Customer APIها در درجه اول برای **background sync** لازم هستند؛ یعنی برای پر کردن rowهای مربوط به `Customer` که به message threadها وصل می‌شوند، نه برای مصرف مستقیم توسط agentها.
+- **APIهای AI-facing هرگز PII خام expose نمی‌کنند** — messageها از `customer_ref` مبهم استفاده می‌کنند (`catalog/pii.py`)
+- **Sales Agent** صراحتاً از PII customer در promptها اجتناب می‌کند (`agents/sales/prompts.py`)
+- customer recordهای sync‌شده از Prestia context CRM Botkonak را تکمیل می‌کنند
 
 ---
 
-## API: دریافت فهرست Customers
+## API: List Customers
 
-| Property                               | Value                                                                                                                                                          |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **نام API**                            | List Customers                                                                                                                                                 |
-| **HTTP method**                        | `GET`                                                                                                                                                          |
-| **مسیر endpoint پیشنهادی**             | `/v1/customers`                                                                                                                                                |
-| **مصرف‌کننده در Botkonak**             | Background sync                                                                                                                                                |
-| **چرا Botkonak به این API نیاز دارد؟** | هنگام import کردن support threadها، برای populate کردن `Customer` استفاده می‌شود. این API مقدارهای `platform` و `platform_user_id` را به threadها link می‌کند. |
-| **نوع نیازمندی**                       | Inferred                                                                                                                                                       |
-| **Priority**                           | P2                                                                                                                                                             |
+| Property | Value |
+|----------|-------|
+| **API name** | List Customers |
+| **HTTP method** | `GET` |
+| **Suggested endpoint path** | `/v1/customers` |
+| **Botkonak consumer** | Support Agent CRM، on-demand fetch |
+| **Why Botkonak needs this** | پر کردن و reconcile ردیف‌های `Customer` در دیتابیس tenant Botkonak. `platform` + `platform_user_id` را به threadهای support وصل می‌کند. |
+| **Requirement type** | Direct |
+| **Priority** | P1 |
 
 ### Headerهای لازم برای request
 
 `Authorization: Bearer <access_token>`، `Accept: application/json`
 
-### Query parameterها
+### Query parameterها — pagination
 
-| Parameter         | Description           |
-| ----------------- | --------------------- |
-| `platform`        | برای مثال `instagram` |
-| `updated_since`   | برای incremental sync |
-| `limit`, `offset` | برای pagination       |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | integer | Yes | اندازه صفحه (پیش‌فرض 50، حداکثر 100) |
+| `offset` | integer | Yes | offset pagination (پیش‌فرض 0) |
 
-### ساختار response موفق
+### Query parameterها — filter و search
 
-</div>
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `platform` | string | No | filter بر اساس platform منبع (مثلاً `website`، `instagram`، `telegram`) |
+| `search` | string | No | جستجو بر اساس `phone`، `email` یا `display_name` |
+
+### شکل successful response
+
+<div dir="ltr" align="left">
 
 ```json
 {
   "count": 5,
+  "next": null,
+  "previous": null,
   "results": [
     {
-      "id": "66666666-6666-6666-6666-666666666666",
-      "external_id": "ig-prestia-001",
+      "botkonak_customer_id": "bk-cust-001",
+      "tenant_user_id": "prestia-cust-001",
       "display_name": "Sara Jamali",
       "email": "sara.jamali@example.com",
       "phone": "09121234567",
@@ -65,71 +70,116 @@ Customer data در Botkonak وجود دارد؛ فایل `backend/catalog/models
 }
 ```
 
-<div dir="rtl" align="right">
+</div>
 
-### Fieldهای مهم
+### تعریف fieldها
 
-| Field                            | فیلد متناظر در مدل Botkonak | نمایش در مسیر AI                                   |
-| -------------------------------- | --------------------------- | -------------------------------------------------- |
-| `platform`                       | `Customer.platform`         | فقط thread metadata                                |
-| `platform_user_id`               | `Customer.platform_user_id` | در AI APIها نمی‌آید                                |
-| `display_name`, `email`, `phone` | همان fieldها                | **فقط Admin** — در مسیرهای agentها redacted می‌شود |
+| Field | Type | Description |
+|-------|------|-------------|
+| `botkonak_customer_id` | string | شناسه customer اختصاص‌داده‌شده Botkonak هنگام link |
+| `tenant_user_id` | string | شناسه customer در scope tenant Prestia |
+| `display_name` | string | نام نمایشی customer |
+| `email` | string \| null | آدرس email |
+| `phone` | string \| null | شماره تلفن |
+| `platform` | string | platform منبع — `website`، `instagram`، `telegram` و غیره |
+| `platform_user_id` | string \| null | شناسه customer در platform خارجی در صورت وجود |
+| `metadata` | object | اطلاعات اضافی سطح customer |
+| `created_at` | datetime | زمان ایجاد record |
+| `updated_at` | datetime | زمان آخرین به‌روزرسانی |
+
+### fieldهای مهم — mapping Botkonak
+
+| Field | Botkonak model field | AI exposure |
+|-------|---------------------|-------------|
+| `platform` | `Customer.platform` | فقط metadata thread |
+| `platform_user_id` | `Customer.platform_user_id` | در AI APIها نیست |
+| `display_name`، `email`، `phone` | همان | **فقط Admin** — در مسیر agent redact می‌شود |
 
 ### نکات امنیتی
 
-- Botkonak **نباید** email یا phone را به agentها forward کند.
-- عملیات sync مقدارهای PII را در Django/Postgres ذخیره می‌کند؛ اما AI APIها فقط message bodyها را sanitize می‌کنند.
+- Botkonak **نباید** email/phone را به agentها forward کند.
+- PII در Django/Postgres ذخیره می‌شود؛ AI APIها فقط body message را sanitize می‌کنند.
+
+### نمونه request
+
+<div dir="ltr" align="left">
+
+```http
+GET /v1/customers?limit=50&offset=0&platform=instagram&search=sara HTTP/1.1
+Host: api.prestia.ir
+Authorization: Bearer prestia_at_abc123
+Accept: application/json
+```
+
+</div>
 
 ### فایل‌های مرتبط
 
-- `backend/catalog/models.py` — مدل `Customer`
-- `seed_prestia.py` — مقدار `PRESTIA_CUSTOMERS`
-- `backend/catalog/management/commands/import_messages_json.py` — import کردن customer
+- `backend/catalog/models.py` — `Customer`
+- `seed_prestia.py` — `PRESTIA_CUSTOMERS`
+- `backend/catalog/management/commands/import_messages_json.py` — import customer
 
 ---
 
-## API: دریافت Order History مربوط به Customer
+## API: Get Customer Order History
 
-| Property                               | Value                                                                                                                                                                                    |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **نام API**                            | Get Customer Order History                                                                                                                                                               |
-| **HTTP method**                        | `GET`                                                                                                                                                                                    |
-| **مسیر endpoint پیشنهادی**             | `/v1/customers/{customer_id}/orders`                                                                                                                                                     |
-| **مصرف‌کننده در Botkonak**             | Sales Agent در آینده، Admin Dashboard                                                                                                                                                    |
-| **چرا Botkonak به این API نیاز دارد؟** | Mock UI مربوط به `sales.follow_up` به purchase history مشتری VIP اشاره می‌کند؛ فایل `frontend/types/mock-data.ts`. این قابلیت در backend logic فعلی Sales Agent **پیاده‌سازی نشده است**. |
-| **نوع نیازمندی**                       | Optional (Future)                                                                                                                                                                        |
-| **Priority**                           | Future                                                                                                                                                                                   |
+| Property | Value |
+|----------|-------|
+| **API name** | Get Customer Order History |
+| **HTTP method** | `GET` |
+| **Suggested endpoint path** | `/v1/customer/{tenant_customer_id}/orders` |
+| **Botkonak consumer** | Support Agent، Sales Agent، Admin Dashboard |
+| **Why Botkonak needs this** | order history برای customer مشخص. پاسخ support و sales follow-up ممکن است به خریدهای گذشته ارجاع دهد. |
+| **Requirement type** | Inferred |
+| **Priority** | P1 |
 
-### Response موفق
+### Path parameterها
 
-یک paginated list از objectهای خلاصه order؛ بدون PII فراتر از opaque customer ref.
+| Name | Type | Description |
+|------|------|-------------|
+| `tenant_customer_id` | string | شناسه customer در scope tenant Prestia (`tenant_user_id`) |
+
+### Query parameterها
+
+همان pagination و filterهای [List Orders](./04-order-and-sales-apis.md):
+
+- `limit`، `offset`
+- `created_at_from`، `created_at_to`
+- `customer_id` (وقتی با path scope شده redundant است — اختیاری)
+- `product_slug`
+- `total_min`، `total_max`
+- `status`
+
+### Successful response
+
+لیست paginated از objectهای order — **همان schema `GET /v1/orders`**.
 
 ### فایل‌های مرتبط
 
-- `frontend/types/mock-data.ts` — مقدار `mockRecommendations` برای follow-up payload
-- `agents/shared/schemas/sales.py` — action type به نام `sales.follow_up`
+- `frontend/types/mock-data.ts` — payload follow-up در `mockRecommendations`
+- `agents/shared/schemas/sales.py` — نوع action `sales.follow_up`
 
 ---
 
-## Customer segmentation / analytics
+## segmentation / analytics مشتری
 
-در کد موجود **لازم نیست**. هیچ segmentation model یا API مربوط به segmentation در Botkonak وجود ندارد.
+**در کد موجود لازم نیست.** هیچ model یا API segmentation در Botkonak وجود ندارد.
 
-**نوع نیازمندی:** Optional (Future)
+**Requirement type:** Optional (Future)
 
 ---
 
 ## شواهد از codebase
 
-- `backend/catalog/models.py` — مدل `Customer` همراه با platform-scoped unique constraint
+- `backend/catalog/models.py` — `Customer` با constraint یکتا per platform
 - `backend/catalog/pii.py` — PII به AI export نمی‌شود
-- `docs/phases/step-3.4.md` — rationale مربوط به customer model
+- `docs/phases/step-3.4.md` — منطق model customer
 - `frontend/hooks/use-customers.ts` — فقط mock data
 
 ## سؤال‌های باز
 
-1. آیا Prestia برای customerهای DM در Instagram مقدار `platform_user_id` را expose می‌کند؟
-2. وضعیت GDPR/consent برای ذخیره customer PII در Botkonak بعد از sync چگونه است؟
-3. آیا flagهای VIP یا repeat-buyer در سمت Prestia وجود دارد تا در آینده برای `sales.follow_up` استفاده شود؟
+1. آیا Prestia `platform_user_id` Instagram را برای customerهای DM expose می‌کند.
+2. GDPR/consent برای ذخیره PII customer در Botkonak پس از sync.
+3. mapping بین `tenant_user_id` و `botkonak_customer_id` در onboarding.
 
 </div>

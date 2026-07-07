@@ -2,116 +2,124 @@
 
 # APIهای Content Agent
 
-APIهایی که **Content Agent** برای تولید draftهای caption و product-description به آن‌ها نیاز دارد.
+APIهای موردنیاز **Content Agent** برای تولید draft caption و توضیح product.
 
 ## خلاصه Agent
 
-Content Agent، یعنی `agents/content/`، مقدارهای قابل‌بازبینی از نوع `ContentSuggestions` تولید می‌کند؛ از جمله Instagram captionها با نوع `content.instagram_draft` و product descriptionها با نوع `content.product_description`. این Agent **مستقیماً API خارجی را فراخوانی نمی‌کند** — بلکه context را از Coordinator دریافت می‌کند؛ فایل `docs/agents/content.md`.
+Content Agent (`agents/content/`) `ContentSuggestions` قابل بررسی با caption اینستاگرام (`content.instagram_draft`) و توضیح product (`content.product_description`) تولید می‌کند. این agent **مستقیماً API خارجی فراخوانی نمی‌کند** — context را از Coordinator دریافت می‌کند (`docs/agents/content.md`).
 
-برای integration با Prestia، این APIهای Prestia باید داده‌هایی را فراهم کنند که Botkonak بتواند آن‌ها را به context bundle و content specialist payload نگاشت کند.
+برای integration Prestia، داده product از Prestia می‌آید؛ پیکربندی brand و store از Botkonak tenant settings.
 
 ## جریان داده
 
-</div>
+<div dir="ltr" align="left">
 
-```text
-Prestia APIs → Botkonak connector/sync → Django catalog
+```
+GET /v1/products (on demand) → Botkonak connector
        ↓
-Coordinator GET context bundle (or Prestia aggregated context)
+Botkonak tenant settings (brand voice, display name, currency)
+       ↓
+Coordinator GET context bundle
        ↓
 Content Agent POST /run { products, store_context }
 ```
 
-<div dir="rtl" align="right">
+</div>
 
-## APIهای لازم از Prestia
+## APIهای Prestia موردنیاز
 
-| Prestia API                                            | ورودی Content Agent                                                    | Priority |
-| ------------------------------------------------------ | ---------------------------------------------------------------------- | -------- |
-| [GET /v1/store](./02-store-profile-apis.md)            | مقدارهای `store_context.settings.brand_voice`، display name و currency | P0       |
-| [GET /v1/products](./03-product-and-inventory-apis.md) | مقدار `products[]` برای promptها                                       | P0       |
+| Prestia API | ورودی Content Agent | Priority |
+|-------------|---------------------|----------|
+| [GET /v1/products](./03-product-and-inventory-apis.md) | `products[]` برای promptها | P0 |
 
-## فیلدهای Context که مصرف می‌شوند
+## پیکربندی Botkonak موردنیاز (نه Prestia)
 
-### Products؛ فایل `agents/content/product_context.py`
+تنظیمات store profile **از Prestia fetch نمی‌شوند**. در UI تنظیمات tenant/store Botkonak پیکربندی کنید:
 
-این داده‌ها از مقدار `products.items` در context bundle نرمال‌سازی می‌شوند:
+| Setting | استفاده Content Agent |
+|---------|----------------------|
+| `settings.brand_voice.tone` | tone draft |
+| `settings.brand_voice.audience` | مخاطب هدف |
+| `settings.brand_voice.style_notes` | قوانین نگارش |
+| `settings.brand_voice.language` | ترجیح زبان خروجی |
+| Store display name | context prompt |
+| `currency` پیش‌فرض | مرجع قیمت در captionها |
 
-| Field                        | Source                         | Required for drafts                                                    |
-| ---------------------------- | ------------------------------ | ---------------------------------------------------------------------- |
-| `product_id` / `id`          | مقدار `id` محصول در Prestia    | بله، برای `content.product_description`                                |
-| `title` / `name`             | مقدار `name` در Prestia        | بله                                                                    |
-| `category` / `category.name` | category به‌صورت nested        | پیشنهاد می‌شود                                                         |
-| `price`, `currency`          | product و store                | پیشنهاد می‌شود                                                         |
-| `image_url` / `images[0]`    | تصاویر product                 | برای captionهای rich پیشنهاد می‌شود                                    |
-| `sku`                        | SKU محصول                      | اختیاری                                                                |
-| `metadata`                   | برای مثال `material` و `color` | پیشنهاد می‌شود — guardrailها اجازه invent کردن attributeها را نمی‌دهند |
+fallback Coordinator وقتی settings گم باشد: `{"brand_voice": {"tone": "warm"}}` (`agents/coordinator/nodes.py`).
 
-**در context bundle فعلی وجود ندارد، اما دریافت آن از Prestia ارزشمند است:**
+## fieldهای context مصرف‌شده
 
-| Field                                  | Requirement type | Notes                                                                                            |
-| -------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------ |
-| `description`                          | Inferred         | product description موجود به بازنویسی draftها کمک می‌کند؛ روی `Product.description` ذخیره می‌شود |
-| `compare_at_price`, `discount_percent` | Optional         | Agent نباید بدون داده، ادعای discount کند؛ guardrailهای فایل `agents/content/prompts.py`         |
+### Products (`agents/content/product_context.py`)
 
-### Store context؛ فایل‌های `agents/content/brand_voice.py` و `agents/content/prompts.py`
+از context bundle `products.items` normalize شده، منبع [GET /v1/products](./03-product-and-inventory-apis.md):
 
-| Field                              | Source                                              |
-| ---------------------------------- | --------------------------------------------------- |
-| `display_name`                     | مقدار `store.name` یا `settings.store_display_name` |
-| `settings.brand_voice.tone`        | settings فروشگاه در Prestia                         |
-| `settings.brand_voice.audience`    | settings فروشگاه در Prestia                         |
-| `settings.brand_voice.style_notes` | settings فروشگاه در Prestia                         |
-| `settings.brand_voice.language`    | settings فروشگاه در Prestia                         |
-| `currency`                         | Store profile                                       |
+| Field | منبع Prestia | لازم برای draft |
+|-------|--------------|-----------------|
+| `slug` | `slug` | بله — شناسه product |
+| `title` | `title` | بله |
+| `category.slug`، `category.title` | `category` nested | توصیه می‌شود |
+| `price`، `currency`، `discount` | fieldهای product | توصیه می‌شود |
+| `images` | `images[]` | توصیه می‌شود برای caption غنی |
+| `inventories[].metadata` | attributeهای variant | اختیاری — color/size در caption |
+| `metadata` | metadata سطح product | توصیه می‌شود — guardrail از اختراع attribute جلوگیری می‌کند |
+| `description` | `description` | توصیه می‌شود برای draft توضیح product |
 
-وقتی settings وجود نداشته باشد، Coordinator از fallback زیر استفاده می‌کند: `{"brand_voice": {"tone": "warm"}}`؛ فایل `agents/coordinator/nodes.py`.
+**Guardrail agent:** نباید بدون داده `discount` ادعای discount کند (`agents/content/prompts.py`).
+
+### Store context (`agents/content/brand_voice.py`، `agents/content/prompts.py`)
+
+| Field | Source |
+|-------|--------|
+| `display_name` | Botkonak tenant/store settings |
+| `settings.brand_voice.*` | Botkonak tenant/store settings |
+| `currency` | Botkonak tenant/store settings (یا `currency` product) |
 
 ### Campaign angle
 
-مقدار `campaign_angle` در request اجرای content اختیاری است — این مقدار فعلاً از API مربوط به Prestia نمی‌آید.
+`campaign_angle` اختیاری در content run request — **امروز از API Prestia نیست**.
 
-## رفتار در صورت خالی بودن Products
+## رفتار product خالی
 
-اگر بعد از sync هیچ productی وجود نداشته باشد، Content Agent بدون فراخوانی LLM یک نتیجه deterministic empty برمی‌گرداند؛ فایل `agents/content/empty_products.py`. برای تولید draftهای معنادار، Prestia باید حداقل یک product فعال expose کند.
+اگر پس از fetch هیچ productی نباشد، Content Agent نتیجه deterministic خالی بدون LLM برمی‌گرداند (`agents/content/empty_products.py`). Prestia باید حداقل یک product فعال برای draft معنادار expose کند.
 
-## محدودیت تعداد Draftها
+## محدودیت draft
 
-مقدار `CONTENT_AGENT_MAX_DRAFTS_PER_RUN` از env خوانده می‌شود و مقدار پیش‌فرض آن 3 است؛ یا می‌تواند از `store.settings.content_agent_max_drafts_per_run` بیاید؛ فایل `agents/content/draft_limit.py`. Prestia می‌تواند این مقدار را در store settings expose کند؛ Priority برابر P2.
+`CONTENT_AGENT_MAX_DRAFTS_PER_RUN` env (پیش‌فرض 3) یا `store.settings.content_agent_max_drafts_per_run` در Botkonak (`agents/content/draft_limit.py`).
 
-## APIهایی که Content Agent به آن‌ها نیاز ندارد
+## APIهایی که Content Agent نیاز ندارد
 
-| Data                    | Reason                                                       |
-| ----------------------- | ------------------------------------------------------------ |
-| Orders و sales summary  | حوزه کاری Sales Agent                                        |
-| Support messages        | حوزه کاری Support Agent                                      |
-| Customer PII            | به‌صورت صریح در promptها ممنوع است                           |
-| FAQ content             | مدل FAQ وجود ندارد؛ Content Agent FAQها را نمی‌خواند         |
-| Instagram publish/write | draftها نیازمند approval مدیر هستند؛ مسیر publish وجود ندارد |
+| Data | Reason |
+|------|--------|
+| `GET /v1/store` | store profile همان Botkonak tenant settings است |
+| Orders، sales summary | حوزه Sales Agent |
+| Support messageها | حوزه Support Agent |
+| PII customer | صراحتاً در promptها ممنوع |
+| محتوای FAQ | حوزه Support Agent |
+| publish/write اینستاگرام | draftها نیاز به تأیید manager دارند؛ مسیر publish نیست |
 
-## Write APIها در آینده
+## Write APIها (Future)
 
-| API                                       | Status                                                                                                             |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| POST برای update کردن product description | **لازم نیست** — فایل `action_mapping.py` وجود دارد، اما Coordinator مقدار `persist_actions: False` را تنظیم می‌کند |
-| POST برای publish در Instagram            | **لازم نیست** — خارج از scope است                                                                                  |
+| API | Status |
+|-----|--------|
+| POST به‌روزرسانی توضیح product | **لازم نیست** — `action_mapping.py` وجود دارد اما coordinator `persist_actions: False` می‌گذارد |
+| POST publish اینستاگرام | **لازم نیست** — خارج از scope |
 
 ## شواهد از codebase
 
-| File                                | Relevance                            |
-| ----------------------------------- | ------------------------------------ |
-| `agents/content/analysis.py`        | orchestration مربوط به pipeline      |
-| `agents/content/product_context.py` | استخراج product/store                |
-| `agents/content/brand_voice.py`     | استخراج brand voice از settings      |
-| `agents/content/prompts.py`         | guardrailهای prompt                  |
-| `agents/coordinator/nodes.py`       | تابع `_content_specialist_payload()` |
-| `backend/catalog/context.py`        | تابع `build_product_summary`         |
-| `docs/agents/content.md`            | مستندات Agent                        |
-| `docs/examples/content_output.json` | output contract                      |
+| File | Relevance |
+|------|-----------|
+| `agents/content/analysis.py` | orchestration pipeline |
+| `agents/content/product_context.py` | استخراج product/store |
+| `agents/content/brand_voice.py` | brand voice از تنظیمات محلی |
+| `agents/content/prompts.py` | guardrailهای prompt |
+| `agents/coordinator/nodes.py` | `_content_specialist_payload()` |
+| `backend/catalog/context.py` | `build_product_summary` |
+| `docs/agents/content.md` | مستندات agent |
+| `docs/examples/content_output.json` | contract خروجی |
 
 ## سؤال‌های باز
 
-1. آیا Prestia برای `output_language: fa`، متن فارسی product copy را به‌صورت native ارائه می‌کند؟ در حال حاضر Coordinator مقدار `output_language: "en"` را ارسال می‌کند.
-2. وضعیت URLهای Image CDN چگونه است؟ آیا برای agent fetch نیاز به authentication یا signed URL وجود دارد؟ البته agentها فقط URLها را در prompt استفاده می‌کنند و image download انجام نمی‌دهند.
+1. آیا Prestia متن فارسی product را به‌صورت native برای `output_language: fa` فراهم می‌کند (coordinator امروز `output_language: "en"` می‌فرستد).
+2. URL CDN تصویر — authentication یا signed URL برای fetch agent (agentها فقط URL در prompt استفاده می‌کنند، تصویر download نمی‌کنند).
 
 </div>

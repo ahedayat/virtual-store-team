@@ -15,10 +15,10 @@ Common conventions for Prestia APIs consumed by Botkonak.
 |---------|---------------------------|-------------------------|-------|
 | Store | `id` (UUID or stable string) | `store.id` | Mapped at connector onboarding |
 | Tenant | `tenant_id` or implicit from token | `tenant.id` | Botkonak creates local tenant |
-| Product | `id` | `product_id` in AI bundle | Also accepts `product_id` alias in content agent |
-| Category | `id` | `category.id` | Nested under product in context bundle |
-| Order | `id`, `order_number` | `order_number`, `external_id` | `external_id` stores Prestia order id |
-| Customer | `id` | opaque `customer-{uuid}` in AI APIs | Raw PII not passed to agents |
+| Product | `slug` | `product_id` in AI bundle | Primary identifier; also map to local UUID |
+| Category | `slug` | `category.slug` | Nested under product in context bundle |
+| Order | `order_id` | `order_number`, `external_id` | `external_id` stores Prestia order id |
+| Customer | `tenant_user_id` | opaque `customer-{uuid}` in AI APIs | Raw PII not passed to agents |
 | Message thread | `id`, `external_thread_id` | `thread_id` | |
 | Message | `id`, `external_message_id` | `message_id` | |
 
@@ -29,9 +29,9 @@ Common conventions for Prestia APIs consumed by Botkonak.
 
 ## Money and currency
 
-- Monetary amounts as **decimal strings** with two fractional digits, e.g. `"189.00"` (matches Django `DecimalField` serialization).
+- Monetary amounts as **numbers** (e.g. `189.00`) or decimal strings — Prestia should document which format is used; Botkonak normalizes on ingest.
 - `currency` as ISO 4217 code, e.g. `"USD"`, `"IRR"`.
-- Store-level default currency on store profile.
+- Default currency configured in **Botkonak tenant settings**, not fetched from Prestia.
 
 ## Order status enum
 
@@ -52,9 +52,9 @@ Prestia should map its order states to these values (or document a mapping table
 
 ## Platform enum (support)
 
-Botkonak `Platform` choices: `instagram`, `whatsapp`, `email`, `web`, `manual`.
+Botkonak `Platform` choices: `instagram`, `whatsapp`, `email`, `web`, `telegram`, `manual`.
 
-Support agent coordinator defaults channel to `instagram_dm` when deriving messages from context (`agents/coordinator/nodes.py`). Prestia should use `platform: "instagram"` for Instagram DMs.
+Support agent coordinator defaults channel to `instagram_dm` when deriving messages from context (`agents/coordinator/nodes.py`). Prestia should use `platform: "instagram"` for Instagram DMs, `platform: "telegram"` for Telegram, `platform: "website"` for website chat.
 
 ## Message direction and sender
 
@@ -99,15 +99,24 @@ Common query parameters Botkonak may need:
 
 | Parameter | Applies to | Purpose |
 |-----------|------------|---------|
-| `is_active=true` | products, categories | Content agent uses active products only |
-| `updated_since` | products, orders, inventory, messages | Incremental sync |
-| `status` | orders, threads | Filter open orders / open threads |
-| `placed_at_gte`, `placed_at_lt` | orders | Sales period aggregation (or use dedicated summary endpoint) |
+| `is_active` | products | Content agent uses active products only |
+| `search` | products, customers | Search by title/slug or phone/email/name |
+| `category` | products | Filter by category slug |
+| `price_min`, `price_max` | products | Price range filter |
+| `currency` | products | Currency filter |
+| `has_discount` | products | Discount filter |
+| `inventory_lte`, `inventory_gte` | products | Variant quantity filters |
+| `status` | orders | Filter by order status |
+| `created_at_from`, `created_at_to` | orders | Order date range |
+| `customer_id` | orders | Filter by customer |
+| `product_slug` | orders | Orders containing product |
+| `total_min`, `total_max` | orders | Order total range |
+| `platform` | customers | Filter by message source |
 
 Default sort:
-- Products: `name` ascending (matches `build_product_summary`)
-- Orders: `-placed_at`
-- Threads: `-last_message_at`
+- Products: `title` ascending
+- Orders: `-created_at`
+- Customers: `-updated_at`
 
 ## Error response shape
 
@@ -136,7 +145,7 @@ Botkonak context bundle includes `warnings: []` for partial failures (`backend/c
 
 ## Brand voice settings shape
 
-Content Agent reads `store_context.settings.brand_voice` (`agents/content/brand_voice.py`):
+Content Agent reads `store_context.settings.brand_voice` from **Botkonak tenant settings** (`agents/content/brand_voice.py`):
 
 ```json
 {
@@ -149,7 +158,7 @@ Content Agent reads `store_context.settings.brand_voice` (`agents/content/brand_
 }
 ```
 
-Prestia store profile should expose equivalent settings (see [02-store-profile-apis.md](./02-store-profile-apis.md)).
+Configured in Botkonak tenant/store settings UI — not fetched from Prestia (see [02-store-profile-apis.md](./02-store-profile-apis.md)).
 
 ## Evidence from codebase
 

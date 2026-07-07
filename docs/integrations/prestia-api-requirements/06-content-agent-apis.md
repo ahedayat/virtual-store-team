@@ -6,14 +6,16 @@ APIs required by the **Content Agent** for caption and product-description draft
 
 The Content Agent (`agents/content/`) generates reviewable `ContentSuggestions` with Instagram captions (`content.instagram_draft`) and product descriptions (`content.product_description`). It does **not** call external APIs directly — it receives context from the Coordinator (`docs/agents/content.md`).
 
-For Prestia integration, these Prestia APIs must supply data that Botkonak maps into the context bundle and content specialist payload.
+For Prestia integration, product data comes from Prestia; brand and store configuration comes from Botkonak tenant settings.
 
 ## Data flow
 
 ```
-Prestia APIs → Botkonak connector/sync → Django catalog
+GET /v1/products (on demand) → Botkonak connector
        ↓
-Coordinator GET context bundle (or Prestia aggregated context)
+Botkonak tenant settings (brand voice, display name, currency)
+       ↓
+Coordinator GET context bundle
        ↓
 Content Agent POST /run { products, store_context }
 ```
@@ -22,44 +24,49 @@ Content Agent POST /run { products, store_context }
 
 | Prestia API | Content Agent input | Priority |
 |-------------|---------------------|----------|
-| [GET /v1/store](./02-store-profile-apis.md) | `store_context.settings.brand_voice`, display name, currency | P0 |
 | [GET /v1/products](./03-product-and-inventory-apis.md) | `products[]` for prompts | P0 |
+
+## Required Botkonak configuration (not Prestia)
+
+Store profile settings are **not** fetched from Prestia. Configure in Botkonak tenant/store settings UI:
+
+| Setting | Content Agent usage |
+|---------|---------------------|
+| `settings.brand_voice.tone` | Draft tone |
+| `settings.brand_voice.audience` | Target audience |
+| `settings.brand_voice.style_notes` | Writing rules |
+| `settings.brand_voice.language` | Output language preference |
+| Store display name | Prompt context |
+| Default `currency` | Pricing references in captions |
+
+Coordinator fallback when settings missing: `{"brand_voice": {"tone": "warm"}}` (`agents/coordinator/nodes.py`).
 
 ## Context fields consumed
 
 ### Products (`agents/content/product_context.py`)
 
-Normalized from context bundle `products.items`:
+Normalized from context bundle `products.items`, sourced from [GET /v1/products](./03-product-and-inventory-apis.md):
 
-| Field | Source | Required for drafts |
-|-------|--------|---------------------|
-| `product_id` / `id` | Prestia product `id` | Yes for `content.product_description` |
-| `title` / `name` | Prestia `name` | Yes |
-| `category` / `category.name` | Nested category | Recommended |
-| `price`, `currency` | Product + store | Recommended |
-| `image_url` / `images[0]` | Product images | Recommended for rich captions |
-| `sku` | Product SKU | Optional |
-| `metadata` | e.g. `material`, `color` | Recommended — guardrails forbid inventing attributes |
+| Field | Prestia source | Required for drafts |
+|-------|----------------|---------------------|
+| `slug` | `slug` | Yes — product identifier |
+| `title` | `title` | Yes |
+| `category.slug`, `category.title` | Nested `category` | Recommended |
+| `price`, `currency`, `discount` | Product fields | Recommended |
+| `images` | `images[]` | Recommended for rich captions |
+| `inventories[].metadata` | Variant attributes | Optional — color/size in captions |
+| `metadata` | Product-level metadata | Recommended — guardrails forbid inventing attributes |
+| `description` | `description` | Recommended for product description drafts |
 
-**Not in context bundle today but valuable from Prestia:**
-
-| Field | Requirement type | Notes |
-|-------|------------------|-------|
-| `description` | Inferred | Existing product description helps rewrite drafts; stored on `Product.description` |
-| `compare_at_price`, `discount_percent` | Optional | Agent must not claim discounts without data (`agents/content/prompts.py` guardrails) |
+**Agent guardrail:** must not claim discounts without `discount` data (`agents/content/prompts.py`).
 
 ### Store context (`agents/content/brand_voice.py`, `agents/content/prompts.py`)
 
 | Field | Source |
 |-------|--------|
-| `display_name` | `store.name` or `settings.store_display_name` |
-| `settings.brand_voice.tone` | Prestia store settings |
-| `settings.brand_voice.audience` | Prestia store settings |
-| `settings.brand_voice.style_notes` | Prestia store settings |
-| `settings.brand_voice.language` | Prestia store settings |
-| `currency` | Store profile |
-
-Coordinator fallback when settings missing: `{"brand_voice": {"tone": "warm"}}` (`agents/coordinator/nodes.py`).
+| `display_name` | Botkonak tenant/store settings |
+| `settings.brand_voice.*` | Botkonak tenant/store settings |
+| `currency` | Botkonak tenant/store settings (or product `currency`) |
 
 ### Campaign angle
 
@@ -67,20 +74,21 @@ Optional `campaign_angle` in content run request — **not from Prestia API** to
 
 ## Empty products behavior
 
-If no products after sync, Content Agent returns deterministic empty result without LLM (`agents/content/empty_products.py`). Prestia must expose at least one active product for meaningful drafts.
+If no products after fetch, Content Agent returns deterministic empty result without LLM (`agents/content/empty_products.py`). Prestia must expose at least one active product for meaningful drafts.
 
 ## Draft limits
 
-`CONTENT_AGENT_MAX_DRAFTS_PER_RUN` env (default 3) or `store.settings.content_agent_max_drafts_per_run` (`agents/content/draft_limit.py`). Prestia may expose this in store settings (P2).
+`CONTENT_AGENT_MAX_DRAFTS_PER_RUN` env (default 3) or Botkonak `store.settings.content_agent_max_drafts_per_run` (`agents/content/draft_limit.py`).
 
 ## APIs NOT required by Content Agent
 
 | Data | Reason |
 |------|--------|
+| `GET /v1/store` | Store profile is Botkonak tenant settings |
 | Orders, sales summary | Sales agent domain |
 | Support messages | Support agent domain |
 | Customer PII | Explicitly forbidden in prompts |
-| FAQ content | No FAQ model; content agent does not read FAQs |
+| FAQ content | Support agent domain |
 | Instagram publish/write | Drafts require manager approval; no publish path |
 
 ## Write APIs (Future)
@@ -96,7 +104,7 @@ If no products after sync, Content Agent returns deterministic empty result with
 |------|-----------|
 | `agents/content/analysis.py` | Pipeline orchestration |
 | `agents/content/product_context.py` | Product/store extraction |
-| `agents/content/brand_voice.py` | Brand voice from settings |
+| `agents/content/brand_voice.py` | Brand voice from local settings |
 | `agents/content/prompts.py` | Prompt guardrails |
 | `agents/coordinator/nodes.py` | `_content_specialist_payload()` |
 | `backend/catalog/context.py` | `build_product_summary` |

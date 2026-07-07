@@ -19,14 +19,14 @@ The coordinator's `fetch_context` node calls Django:
 
 This bundles all Prestia read APIs required for one daily report:
 
-| Context bundle section | Prestia API source | Doc |
-|------------------------|-------------------|-----|
-| `tenant`, `store` | `GET /v1/store` | [02-store-profile-apis.md](./02-store-profile-apis.md) |
-| `products` | `GET /v1/products` | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
-| `sales_summary` | `GET /v1/sales/summary` | [04-order-and-sales-apis.md](./04-order-and-sales-apis.md) |
-| `inventory` | `GET /v1/inventory/low-stock` | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
-| `messages` | `GET /v1/messages/recent` | [08-support-agent-apis.md](./08-support-agent-apis.md) |
-| `warnings` | Partial failures during aggregation | Built by Botkonak connector |
+| Context bundle section | Data source | Doc |
+|------------------------|-------------|-----|
+| `tenant`, `store` | Botkonak tenant/store settings | [02-store-profile-apis.md](./02-store-profile-apis.md) |
+| `products` | `GET /v1/products` (on demand) | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
+| `sales_summary` | Computed by Botkonak from `GET /v1/orders` | [04-order-and-sales-apis.md](./04-order-and-sales-apis.md) |
+| `inventory` | Derived from `GET /v1/products` `inventories[]` | [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) |
+| `messages` | Webhook-ingested into Botkonak inbox | [08-support-agent-apis.md](./08-support-agent-apis.md) |
+| `warnings` | Partial failures during fetch/aggregation | Built by Botkonak connector |
 
 ### API: Aggregated Store Context (optional Prestia shortcut)
 
@@ -44,8 +44,8 @@ This bundles all Prestia read APIs required for one daily report:
 
 | Parameter | Description |
 |-----------|-------------|
-| `include` | Comma-separated: `products,sales,inventory,messages` |
-| `reference_at` | For sales period computation |
+| `include` | Comma-separated: `products,orders,faqs` |
+| `reference_at` | For sales period computation (Botkonak-side) |
 
 #### Successful response shape
 
@@ -74,12 +74,12 @@ Coordinator triggers specialist agents with context derived from Prestia-sourced
 
 `build_merged_daily_report` (`agents/coordinator/merge.py`) includes:
 
-| Field | Prestia data dependency |
-|-------|-------------------------|
-| `sales_summary` | Sales summary API |
-| `prioritized_actions` | From sales agent (sales + inventory) |
-| `content_suggestions` | From content agent (products + store settings) |
-| `support_insights` | From support agent (messages) |
+| Field | Data dependency |
+|-------|-----------------|
+| `sales_summary` | Botkonak aggregation from Prestia orders |
+| `prioritized_actions` | From sales agent (orders + product inventories) |
+| `content_suggestions` | From content agent (products + Botkonak tenant settings) |
+| `support_insights` | From support agent (webhook messages + FAQs) |
 | `warnings`, `partial`, `missing_sections` | Pipeline metadata |
 
 ---
@@ -94,16 +94,7 @@ The Next.js dashboard reads **Botkonak REST APIs**, not Prestia. Prestia must su
 | Report list/detail | `GET /api/reports/`, `GET /api/reports/{id}/` | Merged report from agent run |
 | Actions list/approve | `GET /api/actions/`, `POST .../approve/` | Agent recommendations (not Prestia writes) |
 | History feed | `GET /api/history/` | Actions, reports, events |
-| Store profile | `GET /api/stores/{store_id}/` | Store profile API |
-
-### Store detail for dashboard
-
-| Property | Value |
-|----------|-------|
-| **Prestia API** | `GET /v1/store` |
-| **Botkonak consumer** | Admin Dashboard |
-| **Requirement type** | Direct (indirect via sync) |
-| **Priority** | P0 |
+| Store profile | `GET /api/stores/{store_id}/` | Botkonak tenant/store settings (not Prestia API) |
 
 Frontend hooks (`use-products`, `use-customers`, `use-recommendations`, `use-content-items`) still use **mock data** — not wired to Django APIs. Prestia integration for dashboard product/customer lists is Future when hooks are implemented.
 
@@ -124,7 +115,7 @@ Frontend hooks (`use-products`, `use-customers`, `use-recommendations`, `use-con
 
 ## Recommendations on dashboard
 
-Actions/recommendations are **created by agents inside Botkonak** (`operations.models.Action`), not fetched from Prestia. Prestia supplies **inputs** (sales, inventory, products, messages) only.
+Actions/recommendations are **created by agents inside Botkonak** (`operations.models.Action`), not fetched from Prestia. Prestia supplies **inputs** (orders, products, FAQs); messages arrive via webhooks.
 
 ---
 

@@ -12,89 +12,91 @@ The Sales Agent (`agents/sales/`) produces `SalesAnalysisResult` with recommenda
 
 Priority rubric 1 (urgent) to 5 (informational) (`agents/sales/prompts.py`). Coordinator passes `sales_summary` and `inventory` from context bundle with `fetch_from_django: False` (`agents/coordinator/nodes.py`).
 
+**Sales summary, best sellers, low-stock insights, discount candidates, and recommendations are computed inside Botkonak** from raw Prestia order and product data — Prestia does not expose a sales summary API.
+
 ## Data flow
 
 ```
-Prestia GET /sales/summary + GET /inventory/low-stock
+GET /v1/orders + GET /v1/products (on demand)
        ↓
-Botkonak sync / connector
+Botkonak aggregates sales summary + inventory signals locally
        ↓
 Context bundle → Sales Agent POST /run
 ```
 
-Optional direct path (implemented but disabled by coordinator): Sales Agent `fetch_from_django=True` calls Django internal endpoints (`agents/sales/django_fetch.py`).
+Timezone and currency for period boundaries come from **Botkonak tenant settings**, not Prestia ([02-store-profile-apis.md](./02-store-profile-apis.md)).
 
 ## Required Prestia APIs
 
 | Prestia API | Sales Agent input | Priority |
 |-------------|-------------------|----------|
-| [GET /v1/sales/summary](./04-order-and-sales-apis.md) | `sales_summary.today`, `sales_summary.last_7_days` | P0 |
-| [GET /v1/inventory/low-stock](./03-product-and-inventory-apis.md) | `inventory.items` | P0 |
-| [GET /v1/products](./03-product-and-inventory-apis.md) | Product names/SKUs for cross-reference | P0 (via sync) |
-| [GET /v1/store](./02-store-profile-apis.md) | `currency`, `timezone` for period boundaries | P0 |
+| [GET /v1/orders](./04-order-and-sales-apis.md) | Raw orders for sales aggregation | P0 |
+| [GET /v1/products](./03-product-and-inventory-apis.md) | Product titles, `inventories[]` for stock signals | P0 |
 
-## Sales summary fields used
+## Sales summary (computed by Botkonak)
 
-From `agents/sales/empty_sales.py`, `agents/sales/inventory_signals.py`:
+Botkonak builds `sales_summary.today` and `sales_summary.last_7_days` from `GET /v1/orders` using store timezone from tenant settings (`backend/catalog/services.py`).
 
-| Period field | Usage |
-|--------------|-------|
-| `total_revenue` | Empty sales detection |
-| `order_count` | Empty sales detection |
-| `units_sold` | Demand signals |
-| `average_order_value` | Insights |
-| `top_products[]` | Best sellers; cross-ref with inventory for restock/discount |
+| Period field | Source |
+|--------------|--------|
+| `total_revenue` | Sum of revenue-countable order `total` |
+| `order_count` | Count of revenue-countable orders |
+| `units_sold` | Sum of `items[].quantity` |
+| `average_order_value` | `total_revenue / order_count` |
+| `top_products[]` | Grouped by `items[].product_slug` |
 
-Each `top_products` item:
+Each `top_products` item (computed locally):
 
-| Field | Usage |
-|-------|-------|
-| `product_id` | Recommendation `payload` |
-| `sku` | Recommendation `payload` |
-| `name` | Titles and descriptions |
-| `quantity_sold` | Velocity |
-| `revenue` | Prioritization |
-| `category` | Context |
+| Field | Source |
+|-------|--------|
+| `product_slug` | Order line item |
+| `name` | `items[].product_name` |
+| `quantity_sold` | Aggregated quantity |
+| `revenue` | Aggregated `line_total` |
+| `category` | From matching product in `/v1/products` |
 
 ## Inventory fields used
 
-From `build_low_stock_summary` / `agents/sales/inventory_signals.py`:
+From product `inventories[]` on [GET /v1/products](./03-product-and-inventory-apis.md):
 
 | Field | Usage |
 |-------|-------|
-| `product_id`, `sku`, `product_name` | Restock recommendations |
-| `available_quantity` | Stockout risk |
-| `low_stock_threshold` | Alert boundary |
-| `shortage_units` | Urgency sizing |
-| `suggested_reorder_quantity` | `payload.suggested_order_qty` |
-| `category` | Grouping in LLM payload |
+| `slug`, `title` | Restock recommendations |
+| `inventories[].num` | Stockout risk |
+| `inventories[].metadata` | Variant context |
+| `category.title` | Grouping in LLM payload |
 
 ## Signal types built internally
 
 | Signal | Source | Prestia API |
 |--------|--------|-------------|
-| Low stock products | `inventory.items` | `GET /inventory/low-stock` |
-| High sellers with low stock | Cross-reference `top_products` + inventory | Summary + low-stock |
-| Slow movers | LLM from weak `top_products` / sales | Summary (no dedicated API) |
-| Discount candidates | LLM from sales trends + inventory | Summary (no dedicated API) |
+| Low stock products | `inventories[].num` below threshold | `GET /v1/products` |
+| High sellers with low stock | Cross-reference top products + inventories | Orders + products |
+| Slow movers | LLM from weak top products | Orders (computed) |
+| Discount candidates | LLM from sales trends + inventory | Orders + products |
 
 ## Empty sales behavior
 
-If both `today` and `last_7_days` have zero revenue and zero orders, agent skips LLM (`agents/sales/empty_sales.py`). Prestia must return numeric zeros, not omit periods.
+If both `today` and `last_7_days` have zero revenue and zero orders, agent skips LLM (`agents/sales/empty_sales.py`). Botkonak aggregation must return numeric zeros, not omit periods.
 
 ## Optional Prestia APIs
 
 | API | Why | Priority |
 |-----|-----|----------|
-| `GET /v1/orders` | Recompute summary locally; reconcile Prestia vs Botkonak | P1 |
-| `GET /v1/inventory` | Full stock levels beyond low-stock | P1 |
+| [GET /v1/customer/{id}/orders](./05-customer-apis.md) | Customer purchase history for follow-up | P1 |
 | Abandoned cart / `status=draft` orders | Mock UI follow-up only | Future |
+
+## APIs NOT required
+
+| API | Reason |
+|-----|--------|
+| `GET /v1/sales/summary` | Computed by Botkonak from orders |
+| `GET /v1/store` | Timezone/currency in Botkonak tenant settings |
+| `GET /v1/inventory/low-stock` | Stock data in product `inventories[]` |
 
 ## Write APIs (not required)
 
 Sales agent can `persist_actions` to Django `POST /internal/ai/actions/` when enabled. **No Prestia write** for discounts or restock exists.
-
-`agents/sales/action_mapping.py` maps to internal actions only.
 
 ## Evidence from codebase
 
@@ -105,11 +107,11 @@ Sales agent can `persist_actions` to Django `POST /internal/ai/actions/` when en
 | `agents/sales/inventory_signals.py` | Signal construction |
 | `agents/sales/empty_sales.py` | Empty sales handling |
 | `agents/sales/prompts.py` | Priority rubric |
-| `backend/catalog/services.py` | Aggregation logic Prestia should mirror |
+| `backend/catalog/services.py` | Aggregation logic |
 | `docs/agents/sales.md` | Agent documentation |
-| `docs/examples/sales_output.json` | Output contract |
 
 ## Open questions
 
 1. Whether Prestia can flag "discount-eligible" products natively vs LLM inference.
-2. Real-time inventory reservation accuracy during high-traffic periods.
+2. Real-time inventory accuracy during high-traffic periods.
+3. Low-stock threshold — Botkonak tenant setting vs Prestia metadata.

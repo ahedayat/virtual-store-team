@@ -1,17 +1,14 @@
 # Customer APIs
 
-APIs for customer information, order history, and segmentation.
+APIs for customer information and order history.
 
 ## Current Botkonak need assessment
 
-Customer data exists in Botkonak (`backend/catalog/models.py` — `Customer`) and is seeded for Prestia support demos. However:
+Customer data exists in Botkonak (`backend/catalog/models.py` — `Customer`) and is seeded for Prestia support demos. The Support Agent maintains a **tenant-level CRM** in Botkonak that unifies customers from website, Instagram, Telegram, and future channels.
 
 - **AI-facing APIs never expose raw PII** — messages use opaque `customer_ref` (`catalog/pii.py`)
 - **Sales Agent** explicitly avoids customer PII in prompts (`agents/sales/prompts.py`)
-- **Frontend** uses mock customers only (`frontend/hooks/use-customers.ts`)
-- **No customer analytics or segmentation** code exists
-
-Customer APIs are primarily needed for **background sync** to populate `Customer` rows linked to message threads, not for direct agent consumption.
+- Customer records from Prestia sync supplement Botkonak CRM context
 
 ---
 
@@ -22,32 +19,40 @@ Customer APIs are primarily needed for **background sync** to populate `Customer
 | **API name** | List Customers |
 | **HTTP method** | `GET` |
 | **Suggested endpoint path** | `/v1/customers` |
-| **Botkonak consumer** | Background sync |
-| **Why Botkonak needs this** | Populate `Customer` when importing support threads. Links `platform` + `platform_user_id` to threads. |
-| **Requirement type** | Inferred |
-| **Priority** | P2 |
+| **Botkonak consumer** | Support Agent CRM, on-demand fetch |
+| **Why Botkonak needs this** | Populate and reconcile `Customer` rows in Botkonak tenant database. Links `platform` + `platform_user_id` to support threads. |
+| **Requirement type** | Direct |
+| **Priority** | P1 |
 
 ### Required request headers
 
 `Authorization: Bearer <access_token>`, `Accept: application/json`
 
-### Query parameters
+### Query parameters — pagination
 
-| Parameter | Description |
-|-----------|-------------|
-| `platform` | e.g. `instagram` |
-| `updated_since` | Incremental sync |
-| `limit`, `offset` | Pagination |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | integer | Yes | Page size (default 50, max 100) |
+| `offset` | integer | Yes | Pagination offset (default 0) |
+
+### Query parameters — filters and search
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `platform` | string | No | Filter by source platform (e.g. `website`, `instagram`, `telegram`) |
+| `search` | string | No | Search by `phone`, `email`, or `display_name` |
 
 ### Successful response shape
 
 ```json
 {
   "count": 5,
+  "next": null,
+  "previous": null,
   "results": [
     {
-      "id": "66666666-6666-6666-6666-666666666666",
-      "external_id": "ig-prestia-001",
+      "botkonak_customer_id": "bk-cust-001",
+      "tenant_user_id": "prestia-cust-001",
       "display_name": "Sara Jamali",
       "email": "sara.jamali@example.com",
       "phone": "09121234567",
@@ -61,7 +66,22 @@ Customer APIs are primarily needed for **background sync** to populate `Customer
 }
 ```
 
-### Important fields
+### Field definitions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `botkonak_customer_id` | string | Botkonak-assigned customer identifier when linked |
+| `tenant_user_id` | string | Prestia tenant-scoped customer identifier |
+| `display_name` | string | Customer display name |
+| `email` | string \| null | Email address |
+| `phone` | string \| null | Phone number |
+| `platform` | string | Source platform — `website`, `instagram`, `telegram`, etc. |
+| `platform_user_id` | string \| null | Customer identifier on the external platform when available |
+| `metadata` | object | Additional customer-level information |
+| `created_at` | datetime | Record creation time |
+| `updated_at` | datetime | Last update time |
+
+### Important fields — Botkonak mapping
 
 | Field | Botkonak model field | AI exposure |
 |-------|---------------------|-------------|
@@ -72,7 +92,16 @@ Customer APIs are primarily needed for **background sync** to populate `Customer
 ### Security notes
 
 - Botkonak must **not** forward email/phone to agents.
-- Sync stores PII in Django/Postgres; AI APIs sanitize message bodies only.
+- PII stored in Django/Postgres; AI APIs sanitize message bodies only.
+
+### Example request
+
+```http
+GET /v1/customers?limit=50&offset=0&platform=instagram&search=sara HTTP/1.1
+Host: api.prestia.ir
+Authorization: Bearer prestia_at_abc123
+Accept: application/json
+```
 
 ### Related files
 
@@ -88,15 +117,32 @@ Customer APIs are primarily needed for **background sync** to populate `Customer
 |----------|-------|
 | **API name** | Get Customer Order History |
 | **HTTP method** | `GET` |
-| **Suggested endpoint path** | `/v1/customers/{customer_id}/orders` |
-| **Botkonak consumer** | Sales Agent (future), Admin Dashboard |
-| **Why Botkonak needs this** | Mock UI `sales.follow_up` references VIP customer purchase history (`frontend/types/mock-data.ts`). **Not implemented** in sales agent backend logic. |
-| **Requirement type** | Optional (Future) |
-| **Priority** | Future |
+| **Suggested endpoint path** | `/v1/customer/{tenant_customer_id}/orders` |
+| **Botkonak consumer** | Support Agent, Sales Agent, Admin Dashboard |
+| **Why Botkonak needs this** | Order history for a specific customer. Support replies and sales follow-up may reference past purchases. |
+| **Requirement type** | Inferred |
+| **Priority** | P1 |
+
+### Path parameters
+
+| Name | Type | Description |
+|------|------|-------------|
+| `tenant_customer_id` | string | Prestia tenant-scoped customer id (`tenant_user_id`) |
+
+### Query parameters
+
+Same pagination and filters as [List Orders](./04-order-and-sales-apis.md):
+
+- `limit`, `offset`
+- `created_at_from`, `created_at_to`
+- `customer_id` (redundant when scoped by path — optional)
+- `product_slug`
+- `total_min`, `total_max`
+- `status`
 
 ### Successful response
 
-Paginated list of order summary objects (no PII beyond opaque customer ref).
+Paginated list of order objects — **same schema as `GET /v1/orders`**.
 
 ### Related files
 
@@ -122,6 +168,6 @@ Paginated list of order summary objects (no PII beyond opaque customer ref).
 
 ## Open questions
 
-1. Does Prestia expose Instagram `platform_user_id` for DM customers?
+1. Whether Prestia exposes Instagram `platform_user_id` for DM customers.
 2. GDPR/consent for storing customer PII in Botkonak after sync.
-3. Whether VIP / repeat-buyer flags exist on Prestia side for future `sales.follow_up`.
+3. Mapping between `tenant_user_id` and `botkonak_customer_id` during onboarding.

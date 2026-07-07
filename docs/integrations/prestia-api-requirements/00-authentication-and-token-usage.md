@@ -61,16 +61,15 @@ Scopes should be **derived from read APIs Botkonak actually needs**. Suggested s
 
 | Scope | Maps to Prestia API group | Required by codebase |
 |-------|---------------------------|----------------------|
-| `read:store` | Store profile | Yes — context bundle `store`, `tenant` |
-| `read:products` | Products, categories | Yes — content agent, context bundle |
-| `read:inventory` | Inventory, low-stock | Yes — sales agent |
-| `read:orders` | Orders, sales summary | Yes — sales aggregation |
-| `read:customers` | Customer list | Limited — sync only; AI APIs use opaque `customer_ref` |
-| `read:support_messages` | Recent message threads | Yes — support agent |
-| `read:analytics` | Pre-aggregated sales summary | Yes — if sales summary is a dedicated endpoint |
+| `read:products` | Products, categories | Yes — content agent, sales agent, context bundle |
+| `read:orders` | Orders | Yes — sales aggregation (computed locally) |
+| `read:customers` | Customer list | Yes — Support CRM sync |
+| `read:faqs` | FAQ list | Yes — support agent |
 | `write:support_replies` | Post support replies | **Not required** — no outbound Prestia write in code |
 | `write:content_drafts` | Publish content | **Not required** — drafts stay in Botkonak |
 | `write:recommendations` | Apply discounts/restock | **Not required** — actions are approval stubs |
+
+**Not required:** `read:store` (Botkonak tenant settings), `read:analytics` (no Prestia sales summary), `read:inventory` (inventories on products), `read:support_messages` (webhook ingestion).
 
 ### Token revocation
 
@@ -155,7 +154,7 @@ Scopes should be **derived from read APIs Botkonak actually needs**. Suggested s
   "token_type": "Bearer",
   "expires_in": 3600,
   "refresh_token": "prestia_rt_xyz789",
-  "scope": "read:store read:products read:inventory read:orders read:support_messages read:analytics"
+  "scope": "read:products read:orders read:customers read:faqs"
 }
 ```
 

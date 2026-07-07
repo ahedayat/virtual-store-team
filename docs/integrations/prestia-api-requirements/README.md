@@ -23,15 +23,15 @@ Botkonak today **does not call prestia.ir**. It mirrors Prestia-shaped data loca
 |------|----------|
 | [00-authentication-and-token-usage.md](./00-authentication-and-token-usage.md) | OAuth 2.0, Bearer headers, scopes, token lifecycle |
 | [01-shared-data-contracts.md](./01-shared-data-contracts.md) | Common types, pagination, errors, field mappings |
-| [02-store-profile-apis.md](./02-store-profile-apis.md) | Store identity, timezone, currency, brand settings |
-| [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) | Products, categories, inventory, low-stock |
-| [04-order-and-sales-apis.md](./04-order-and-sales-apis.md) | Orders, sales summary, revenue metrics |
+| [02-store-profile-apis.md](./02-store-profile-apis.md) | Botkonak tenant settings (not a Prestia API) |
+| [03-product-and-inventory-apis.md](./03-product-and-inventory-apis.md) | Products, categories, variant inventories |
+| [04-order-and-sales-apis.md](./04-order-and-sales-apis.md) | Orders (sales summary computed by Botkonak) |
 | [05-customer-apis.md](./05-customer-apis.md) | Customer records and order history (limited current need) |
 | [06-content-agent-apis.md](./06-content-agent-apis.md) | APIs consumed (directly or via sync) by the Content Agent |
 | [07-sales-agent-apis.md](./07-sales-agent-apis.md) | APIs consumed by the Sales Agent |
 | [08-support-agent-apis.md](./08-support-agent-apis.md) | APIs consumed by the Support Agent |
 | [09-coordinator-agent-and-dashboard-apis.md](./09-coordinator-agent-and-dashboard-apis.md) | Coordinator context needs and dashboard implications |
-| [10-sync-webhooks-and-refresh-strategy.md](./10-sync-webhooks-and-refresh-strategy.md) | Polling vs webhooks based on current architecture |
+| [10-sync-webhooks-and-refresh-strategy.md](./10-sync-webhooks-and-refresh-strategy.md) | On-demand API fetch + webhook message ingestion |
 | [11-api-priority-and-mvp-scope.md](./11-api-priority-and-mvp-scope.md) | P0–Future classification and open questions |
 | [12-full-api-index.md](./12-full-api-index.md) | Complete API index table |
 
@@ -92,10 +92,10 @@ A Prestia connector must ensure Django's catalog tables (or runtime fetches) ref
 | Group | Prestia endpoints (summary) | Why |
 |-------|----------------------------|-----|
 | **Auth** | OAuth token (+ refresh) | Secure connection |
-| **Store** | `GET /store` | Timezone, currency, brand voice |
-| **Catalog** | `GET /products`, `GET /inventory/low-stock` | Content + sales agents |
-| **Sales** | `GET /sales/summary` | Sales agent metrics |
-| **Support** | `GET /messages/recent` | Support agent threads |
+| **Catalog** | `GET /products` | Content + sales agents |
+| **Orders** | `GET /orders` | Sales agent computes summary locally |
+| **Support** | `GET /faqs` + website message webhook | FAQ answers + real-time inbox |
+| **Settings** | *(Botkonak UI)* | Brand voice, timezone, currency |
 
 Full P0 list: [11-api-priority-and-mvp-scope.md](./11-api-priority-and-mvp-scope.md).
 
@@ -128,4 +128,4 @@ This documentation explicitly does **not**:
 1. **Prestia API base URL and versioning** — not defined in this repository (assumed `https://api.prestia.ir/v1` in examples).
 2. **Connector placement** — sync into Django vs runtime proxy to Prestia is undecided in code.
 3. **Persian vs English catalog fields** — seed uses English product names; production Prestia may use Persian (`fa`) with different slug conventions.
-4. **Instagram DM ingestion** — Botkonak expects `platform: "instagram"` threads; unclear whether Prestia exposes native Instagram integration or a unified inbox API.
+4. **Instagram / Telegram / website message ingestion** — Support Agent uses webhook-based delivery; Prestia website chat must forward messages to Botkonak.

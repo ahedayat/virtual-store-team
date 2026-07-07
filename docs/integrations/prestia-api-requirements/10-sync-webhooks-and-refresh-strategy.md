@@ -1,6 +1,6 @@
 # Sync, Webhooks, and Refresh Strategy
 
-How Botkonak should keep Prestia data fresh based on the **existing** architecture.
+How Botkonak keeps Prestia data fresh based on the **revised** integration model.
 
 ## Current state (no Prestia connector)
 
@@ -15,41 +15,75 @@ How Botkonak should keep Prestia data fresh based on the **existing** architectu
 
 ---
 
-## Recommended MVP strategy: scheduled pull sync
+## Core principle: on-demand data APIs + webhook message ingestion
 
-**Requirement type:** Inferred — required for real Prestia integration but not implemented.
+| Pattern | Applies to | Behavior |
+|---------|------------|----------|
+| **On-demand API calls** | Products, orders, customers, FAQs, and similar data APIs | Botkonak calls Prestia **whenever the relevant agent needs fresh data** — not via a standing poll loop or broad webhook sync |
+| **Webhook ingestion** | Support Agent messages only | Real-time delivery when users send messages on website, Instagram, or Telegram |
 
-### When to sync
+**Do not** describe a broad webhook-based sync system for all Prestia data unless clearly marked as a future enhancement.
 
-| Trigger | Rationale |
-|---------|-----------|
-| **Before daily report** | Coordinator context must reflect current Prestia state (`backend/operations/tasks.py` → coordinator → context bundle) |
-| **Periodic background job** | e.g. every 15–60 minutes for catalog/inventory/messages between reports |
-| **On OAuth connect** | Initial full sync after authorization |
+---
 
-### What to sync (pull endpoints)
+## On-demand API fetch (default for all data APIs)
 
-| Prestia endpoint | Botkonak target | Sync mode |
-|------------------|-----------------|-----------|
-| `GET /v1/store` | `Store`, `Tenant.settings` | Full |
-| `GET /v1/categories` | `Category` | Full + incremental `updated_since` |
-| `GET /v1/products` | `Product` | Incremental |
-| `GET /v1/inventory` | `InventoryLevel` | Incremental |
-| `GET /v1/orders` | `Order`, `OrderItem` | Incremental by `placed_at` / `updated_since` |
-| `GET /v1/customers` | `Customer` | Incremental |
-| `GET /v1/messages/recent` | `MessageThread`, `Message` | Incremental (or larger window than AI default) |
+### When to call Prestia
 
-**Alternative:** Call `GET /v1/sales/summary` and `GET /v1/inventory/low-stock` at report time without storing raw orders — reduces storage but limits dashboard drill-down.
+| Trigger | Prestia endpoints | Rationale |
+|---------|-------------------|-----------|
+| **Before daily report** | `GET /v1/products`, `GET /v1/orders`, `GET /v1/faqs` | Coordinator context must reflect current Prestia state |
+| **Agent-specific need** | Relevant endpoint for that agent | Sales Agent fetches orders + products; Content Agent fetches products; Support Agent fetches FAQs |
+| **On OAuth connect** | Initial full fetch of catalog and historical orders | Bootstrap local cache |
 
-### Incremental sync parameters
+### Data APIs (on-demand, not webhook-based)
 
-Use `updated_since` (ISO datetime) on list endpoints where supported ([01-shared-data-contracts.md](./01-shared-data-contracts.md)).
+| Prestia endpoint | Botkonak consumer | Fetch mode |
+|------------------|-------------------|------------|
+| `GET /v1/products` | Content Agent, Sales Agent, Coordinator | On demand |
+| `GET /v1/orders` | Sales Agent, Coordinator | On demand |
+| `GET /v1/customers` | Support Agent CRM sync | On demand |
+| `GET /v1/faqs` | Support Agent | On demand |
+| `GET /v1/categories` | Connector (optional) | On demand |
 
-Store last successful sync timestamp per store in Botkonak (connector metadata — not in current schema).
+Store profile settings (`brand_voice`, timezone, currency) are **not** fetched from Prestia — configured in Botkonak tenant settings ([02-store-profile-apis.md](./02-store-profile-apis.md)).
+
+Sales summaries are **computed by Botkonak** from orders and products — Prestia does not expose `GET /v1/sales/summary`.
+
+### Pagination
+
+Use `limit` and `offset` on list endpoints. Connector fetches all pages when building full context for a report run.
 
 ### Idempotency
 
-Match Prestia `external_id` fields to Botkonak `external_id` / `external_thread_id` / `external_message_id` unique constraints (`catalog/models.py`).
+Match Prestia stable identifiers (`slug`, `order_id`, `tenant_user_id`) to Botkonak `external_id` fields (`catalog/models.py`).
+
+---
+
+## Webhook-based message ingestion (Support Agent only)
+
+The **only webhook-based integration currently required** is Support Agent message ingestion.
+
+| Source | Webhook path | Prestia role |
+|--------|--------------|--------------|
+| Instagram | Platform → Botkonak | Optional relay; may connect directly |
+| Telegram | Platform → Botkonak | Optional relay; may connect directly |
+| Website | Prestia → Botkonak | **Prestia must send** website chat messages to Botkonak immediately |
+
+When a message arrives:
+
+1. Botkonak webhook receiver validates signature / secret.
+2. Message stored in tenant support inbox.
+3. Customer record created or updated in tenant CRM.
+4. Support Agent reads from local DB (not live Prestia poll).
+
+See [08-support-agent-apis.md](./08-support-agent-apis.md) for channel details.
+
+### Webhook security
+
+- HMAC signature verification or shared secret
+- HTTPS only
+- Idempotent processing by `message_id` / `external_message_id`
 
 ---
 
@@ -58,9 +92,9 @@ Match Prestia `external_id` fields to Botkonak `external_id` / `external_thread_
 ```
 Manager POST /api/reports/generate/
     → Celery generate_daily
-        → (Future) Prestia sync job OR verify sync freshness
+        → On-demand Prestia fetch (products, orders, FAQs)
         → Coordinator POST /workflows/daily-report
-            → Django GET context (local DB)
+            → Django GET context (local DB + fresh fetch results)
             → Specialist agents
             → Django POST complete
 ```
@@ -69,45 +103,35 @@ Botkonak already prevents concurrent report runs per store (`unique_active_repor
 
 ---
 
-## Webhooks (optional / future)
+## Future enhancements (optional — not MVP)
 
-**Not required by current code.** No webhook handlers exist in Botkonak.
+These are **not required** for initial integration:
 
-If Prestia adds webhooks, these would reduce polling latency:
+| Enhancement | Priority | Notes |
+|-------------|----------|-------|
+| `product.updated` webhook | Future | Would reduce on-demand catalog fetch latency |
+| `order.created` webhook | Future | Would reduce on-demand order fetch latency |
+| `inventory.updated` webhook | Future | Real-time stock alerts |
+| Scheduled background sync job | Future | Alternative to purely on-demand if latency becomes an issue |
 
-| Webhook event | Priority | Botkonak action (future) |
-|---------------|----------|--------------------------|
-| `product.created` / `product.updated` | P2 | Upsert `Product` |
-| `inventory.updated` | P1 | Upsert `InventoryLevel` |
-| `order.created` / `order.updated` | P1 | Upsert `Order` |
-| `message.received` | P1 | Insert `Message`, update thread |
-| `store.settings.updated` | P2 | Update brand voice settings |
-
-### Webhook security (if implemented)
-
-- HMAC signature verification
-- HTTPS only
-- Idempotent event processing by `event_id`
-
-**Mark as:** Optional (Future) — useful improvement, not blocking MVP.
+Mark all broad data webhooks as **Future / optional** — on-demand API calls are the MVP contract.
 
 ---
 
-## On-demand refresh
+## On-demand refresh scenarios
 
 | Scenario | Strategy |
 |----------|----------|
-| Manager opens support UI | Pull `GET /v1/messages/recent` (future wired frontend) |
-| Manager triggers report | Full or incremental sync immediately before coordinator |
-| Sales agent `fetch_from_django` | Reads local DB after sync (not live Prestia call) |
-
-Sales/support agents support `fetch_from_django` / `fetch_recent_messages` flags but coordinator sets both to `False` — context is preloaded from bundle.
+| Manager triggers daily report | Fetch products, orders, FAQs from Prestia immediately before coordinator |
+| Support Agent run | Read messages from local inbox (webhook-ingested); fetch FAQs on demand |
+| Sales Agent run | Fetch orders + products on demand; compute summary locally |
+| Content Agent run | Fetch products on demand |
 
 ---
 
-## Token refresh during sync
+## Token refresh during fetch
 
-Long-running sync jobs must refresh OAuth tokens via `POST /v1/oauth/token` (refresh grant) before expiry ([00-authentication-and-token-usage.md](./00-authentication-and-token-usage.md)).
+Long-running fetch jobs must refresh OAuth tokens via `POST /v1/oauth/token` (refresh grant) before expiry ([00-authentication-and-token-usage.md](./00-authentication-and-token-usage.md)).
 
 ---
 
@@ -117,9 +141,10 @@ Align with existing Botkonak patterns:
 
 | Failure | Behavior |
 |---------|----------|
-| Prestia API down during sync | Log error; optionally proceed with stale data + `warnings` in context bundle (`_safe_section` in `context.py`) |
+| Prestia API down during fetch | Log error; optionally proceed with stale data + `warnings` in context bundle (`_safe_section` in `context.py`) |
 | Partial section failure | Empty section + warning string (same as context bundle) |
-| Sync failure before report | Fail report run or proceed with stale data — **Open question** for product decision |
+| Fetch failure before report | Fail report run or proceed with stale data — **Open question** for product decision |
+| Webhook delivery failure | Prestia/website should retry; Botkonak logs and alerts |
 
 `DjangoClient` retries transient GET failures (`agents/shared/django_client/client.py`). Prestia connector should use similar retry policy.
 
@@ -138,7 +163,7 @@ Align with existing Botkonak patterns:
 
 ## Open questions
 
-1. Maximum acceptable staleness for inventory during daily report.
-2. Whether Botkonak stores full order history or only rolling 7-day window.
-3. Prestia webhook availability and event catalog.
-4. Rate limits for bulk sync vs incremental sync.
+1. Maximum acceptable staleness for catalog during daily report when on-demand fetch fails.
+2. Whether Botkonak stores full order history or only a rolling window.
+3. Prestia website chat webhook payload schema.
+4. Rate limits for on-demand bulk fetch vs incremental page requests.

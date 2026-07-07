@@ -1,18 +1,18 @@
 # Order and Sales APIs
 
-APIs for orders, sales metrics, revenue, best sellers, and time-based sales analysis.
+APIs for orders and raw sales data. **Sales summaries, best sellers, low-stock insights, discount candidates, and sales recommendations are computed by Botkonak's Sales Agent** from orders and product/inventory data — Prestia does not expose a sales summary API.
 
 ---
 
-## API: Get Sales Summary
+## API: List Orders
 
 | Property | Value |
 |----------|-------|
-| **API name** | Get Sales Summary |
+| **API name** | List Orders |
 | **HTTP method** | `GET` |
-| **Suggested endpoint path** | `/v1/sales/summary` |
-| **Botkonak consumer** | Sales Agent, Coordinator Agent, Background sync |
-| **Why Botkonak needs this** | Primary input for sales analysis. Aggregates revenue, order counts, units sold, AOV, and top products for **today** and **last 7 days** in store timezone. Empty sales → deterministic empty result without LLM (`agents/sales/empty_sales.py`). |
+| **Suggested endpoint path** | `/v1/orders` |
+| **Botkonak consumer** | Sales Agent, Coordinator Agent, on-demand fetch |
+| **Why Botkonak needs this** | Botkonak computes sales summary, best sellers, and recommendation signals from `Order` + line items locally (`backend/catalog/services.py`). Raw order data is the Prestia source of truth for sales analysis. |
 | **Requirement type** | Direct |
 | **Priority** | P0 |
 
@@ -20,12 +20,24 @@ APIs for orders, sales metrics, revenue, best sellers, and time-based sales anal
 
 `Authorization: Bearer <access_token>`, `Accept: application/json`
 
-### Query parameters
+### Query parameters — pagination
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `reference_at` | ISO datetime | No | Compute periods relative to this instant (default: now). Botkonak uses server `timezone.now()` in `build_sales_summary`. |
-| `top_products_limit` | integer | No | Default `5` — matches `_serialize_period` |
+| `limit` | integer | Yes | Page size (default 50, max 100) |
+| `offset` | integer | Yes | Pagination offset (default 0) |
+
+### Query parameters — filters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `created_at_from` | datetime | No | Order date range start (inclusive) |
+| `created_at_to` | datetime | No | Order date range end (inclusive) |
+| `customer_id` | string | No | Filter by customer |
+| `product_slug` | string | No | Orders containing this product |
+| `total_min` | number | No | Minimum order `total` (inclusive) |
+| `total_max` | number | No | Maximum order `total` (inclusive) |
+| `status` | string | No | Filter by order status |
 
 ### Path parameters
 
@@ -39,131 +51,27 @@ Not applicable.
 
 ```json
 {
-  "generated_at": "2026-06-25T14:30:00+00:00",
-  "store_id": "22222222-2222-2222-2222-222222222222",
-  "currency": "USD",
-  "periods": {
-    "today": {
-      "from": "2026-06-25T04:00:00+00:00",
-      "to": "2026-06-26T04:00:00+00:00",
-      "total_revenue": "318.00",
-      "order_count": 2,
-      "units_sold": 4,
-      "average_order_value": "159.00",
-      "top_products": [
-        {
-          "product_id": "33333333-3333-3333-3333-333333333333",
-          "name": "Milano Leather Tote",
-          "sku": "PRS-TOTE-001",
-          "quantity_sold": 1,
-          "revenue": "189.00",
-          "category": "Handbags"
-        }
-      ]
-    },
-    "last_7_days": {
-      "from": "2026-06-19T04:00:00+00:00",
-      "to": "2026-06-26T04:00:00+00:00",
-      "total_revenue": "892.00",
-      "order_count": 6,
-      "units_sold": 12,
-      "average_order_value": "148.67",
-      "top_products": []
-    }
-  }
-}
-```
-
-**Context bundle mapping:** Botkonak maps `periods.today` → `sales_summary.today`, `periods.last_7_days` → `sales_summary.last_7_days` (`backend/catalog/context.py`).
-
-### Important fields
-
-| Field | Usage |
-|-------|-------|
-| `total_revenue` | Sum of `total_amount` for revenue-countable orders |
-| `order_count` | Count of revenue-countable orders in period |
-| `units_sold` | Sum of `OrderItem.quantity` |
-| `average_order_value` | `total_revenue / order_count` (0 if no orders) |
-| `top_products` | Best sellers by revenue then quantity — discount/slow-mover signals |
-
-### Revenue-countable order statuses
-
-Only orders in `paid`, `completed`, or `fulfilled` status (`REVENUE_COUNTABLE_ORDER_STATUSES` in `catalog/models.py`).
-
-### Pagination
-
-`top_products` is a bounded list (default 5 per period).
-
-### Error cases
-
-`401`, `403`, `500`
-
-### Example request
-
-```http
-GET /v1/sales/summary?top_products_limit=5 HTTP/1.1
-Host: api.prestia.ir
-Authorization: Bearer prestia_at_abc123
-Accept: application/json
-```
-
-### Related files
-
-- `backend/catalog/services.py` — `build_sales_summary`, `_serialize_period`, `get_period_bounds`
-- `backend/catalog/internal_views.py` — `InternalSalesSummaryView`
-- `agents/sales/django_fetch.py` — `get_sales_summary`
-- `agents/sales/empty_sales.py` — empty detection
-- `agents/sales/inventory_signals.py` — cross-reference top products with inventory
-- `docs/phases/step-3.2.md`
-
----
-
-## API: List Orders
-
-| Property | Value |
-|----------|-------|
-| **API name** | List Orders |
-| **HTTP method** | `GET` |
-| **Suggested endpoint path** | `/v1/orders` |
-| **Botkonak consumer** | Background sync |
-| **Why Botkonak needs this** | Botkonak computes sales summary from `Order` + `OrderItem` rows locally. Connector needs order data to populate Django if Prestia does not provide pre-aggregated summary, or for reconciliation. |
-| **Requirement type** | Inferred |
-| **Priority** | P1 |
-
-### Query parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `status` | Filter by order status |
-| `placed_at_gte`, `placed_at_lt` | Date range (store timezone aware) |
-| `updated_since` | Incremental sync |
-| `limit`, `offset` | Pagination |
-
-### Successful response shape
-
-```json
-{
   "count": 8,
+  "next": null,
+  "previous": null,
   "results": [
     {
-      "id": "88888888-8888-8888-8888-888888888888",
-      "external_id": "prestia-ord-001",
-      "order_number": "PRS-ORD-001",
+      "order_id": "PRS-ORD-001",
       "status": "paid",
       "currency": "USD",
-      "subtotal_amount": "247.00",
-      "discount_amount": "0.00",
-      "total_amount": "247.00",
-      "placed_at": "2026-06-25T14:00:00+00:00",
-      "external_customer_ref": "demo-cust-001",
+      "subtotal": 247.00,
+      "discount_amount": 0.00,
+      "tax": 0.00,
+      "shipping_price": 0.00,
+      "total": 247.00,
+      "customer_id": "66666666-6666-6666-6666-666666666666",
       "items": [
         {
-          "product_id": "33333333-3333-3333-3333-333333333333",
-          "product_name_snapshot": "Milano Leather Tote",
-          "sku_snapshot": "PRS-TOTE-001",
+          "product_slug": "milano-leather-tote",
+          "product_name": "Milano Leather Tote",
           "quantity": 1,
-          "unit_price": "189.00",
-          "line_total": "189.00"
+          "unit_price": 189.00,
+          "line_total": 189.00
         }
       ],
       "metadata": {},
@@ -174,13 +82,55 @@ Accept: application/json
 }
 ```
 
-### Important fields
+### Field definitions
 
-Maps to `Order` and `OrderItem` in `backend/catalog/models.py`.
+| Field | Type | Description |
+|-------|------|-------------|
+| `order_id` | string | Stable order identifier |
+| `status` | string | Order status (map to Botkonak `OrderStatus` — see [01-shared-data-contracts.md](./01-shared-data-contracts.md)) |
+| `currency` | string | ISO 4217 code |
+| `subtotal` | number | Pre-discount subtotal |
+| `discount_amount` | number | Total discounts applied |
+| `tax` | number | Tax amount |
+| `shipping_price` | number | Shipping charge |
+| `total` | number | Final order total |
+| `customer_id` | string | Maps to the corresponding customer record |
+| `items` | array | Line items (list of objects) |
+| `items[].product_slug` | string | Product slug |
+| `items[].product_name` | string | Product name at time of order |
+| `items[].quantity` | integer | Quantity ordered |
+| `items[].unit_price` | number | Unit price |
+| `items[].line_total` | number | Line total |
+| `metadata` | object | Additional order-level information |
+| `created_at` | datetime | Order creation time |
+| `updated_at` | datetime | Last update time |
+
+### Revenue-countable order statuses
+
+Only orders in `paid`, `completed`, or `fulfilled` status count toward Botkonak sales summary (`REVENUE_COUNTABLE_ORDER_STATUSES` in `catalog/models.py`).
+
+### Pagination
+
+Required: `limit` and `offset`.
+
+### Error cases
+
+`401`, `403`, `429`, `500`
+
+### Example request
+
+```http
+GET /v1/orders?limit=50&offset=0&created_at_from=2026-06-01T00:00:00+00:00&created_at_to=2026-06-30T23:59:59+00:00&status=paid HTTP/1.1
+Host: api.prestia.ir
+Authorization: Bearer prestia_at_abc123
+Accept: application/json
+```
 
 ### Related files
 
 - `backend/catalog/models.py` — `Order`, `OrderItem`, `OrderStatus`
+- `backend/catalog/services.py` — `build_sales_summary`
+- `agents/sales/django_fetch.py` — `get_sales_summary`
 - `seed_prestia.py` — `PRESTIA_ORDERS`
 
 ---
@@ -193,22 +143,40 @@ Maps to `Order` and `OrderItem` in `backend/catalog/models.py`.
 | **HTTP method** | `GET` |
 | **Suggested endpoint path** | `/v1/orders/{order_id}` |
 | **Botkonak consumer** | Support Agent |
-| **Why Botkonak needs this** | Support threads reference order numbers (e.g. `PRS-ORD-001` in seed messages). Agent does not fetch order details today but may need them for order-status replies. |
+| **Why Botkonak needs this** | Support threads reference order numbers (e.g. `PRS-ORD-001` in seed messages). Agent may need order details for order-status replies. |
 | **Requirement type** | Inferred |
 | **Priority** | P2 |
 
 ### Path parameters
 
-`order_id` — Prestia order UUID or `order_number` lookup (Prestia to define).
+| Name | Type | Description |
+|------|------|-------------|
+| `order_id` | string | Prestia order identifier |
 
 ### Successful response
 
-Single order object with `items` array.
+Single order object — **same schema as one item from `GET /v1/orders`**.
 
 ### Related files
 
 - `seed_prestia.py` — `prestia-thread-order-followup` message references `PRS-ORD-001`
 - `agents/support/refusal.py` — order mutation requests refused (read-only still useful)
+
+---
+
+## Sales analytics (Botkonak responsibility)
+
+Prestia does **not** expose `GET /v1/sales/summary` or similar pre-aggregated sales endpoints.
+
+Botkonak's Sales Agent derives the following from `GET /v1/orders` and `GET /v1/products`:
+
+| Insight | Source |
+|---------|--------|
+| Sales summary (today, last 7 days) | Aggregated from orders in store timezone |
+| Best-selling products | Order line items grouped by `product_slug` |
+| Low-stock insights | Product `inventories[].num` cross-referenced with sales velocity |
+| Discount candidates | LLM interpretation of sales trends + inventory (`agents/sales/inventory_signals.py`) |
+| Slow movers | LLM interpretation of weak sales velocity |
 
 ---
 
@@ -220,20 +188,9 @@ Single order object with `items` array.
 | **HTTP method** | `GET` |
 | **Suggested endpoint path** | `/v1/orders?status=draft,pending` |
 | **Botkonak consumer** | Sales Agent |
-| **Why Botkonak needs this** | Mock UI shows "abandoned cart" follow-up (`frontend/types/mock-data.ts`). **No backend implementation** uses abandoned-cart data. Sales agent `sales.follow_up` action type exists but is LLM-driven from sales/inventory context only. |
+| **Why Botkonak needs this** | Mock UI shows "abandoned cart" follow-up (`frontend/types/mock-data.ts`). **No backend implementation** uses abandoned-cart data today. |
 | **Requirement type** | Optional (Future) |
 | **Priority** | Future |
-
----
-
-## Slow movers and discount candidates
-
-No dedicated Prestia API is required by current code. The Sales Agent infers:
-
-- **Discount candidates** — from low sales velocity in `top_products` + inventory signals (`agents/sales/inventory_signals.py`, `agents/sales/prompts.py`)
-- **Slow movers** — LLM interpretation of sales summary (not a separate API)
-
-**Requirement type:** Optional — pre-computed analytics endpoint would be Future/P2.
 
 ---
 
@@ -243,6 +200,6 @@ See per-API sections.
 
 ## Open questions
 
-1. Whether Prestia provides aggregated `GET /sales/summary` or Botkonak must compute from raw orders.
-2. Abandoned cart data availability in Prestia.
-3. Order status mapping from Prestia native states to Botkonak enum.
+1. Abandoned cart data availability in Prestia.
+2. Order status mapping from Prestia native states to Botkonak enum.
+3. Whether `order_id` is human-readable (`PRS-ORD-001`) or UUID — connector must map to `external_id`.
